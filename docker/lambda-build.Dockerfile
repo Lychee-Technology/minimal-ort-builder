@@ -30,13 +30,13 @@ RUN pip3 install --no-cache-dir \
 
 # ccache is not in AL2023 repos and the PyPI package has no arm64 wheel.
 # Install the pre-built arm64 binary from the official ccache GitHub release.
-ARG CCACHE_VERSION=4.10.2
+ARG CCACHE_VERSION=4.13.2
 RUN curl -fsSL \
-      "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-aarch64.tar.xz" \
+      "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-aarch64-glibc.tar.xz" \
       -o /tmp/ccache.tar.xz \
     && tar -xf /tmp/ccache.tar.xz -C /usr/local/bin \
          --strip-components=1 \
-         "ccache-${CCACHE_VERSION}-linux-aarch64/ccache" \
+         "ccache-${CCACHE_VERSION}-linux-aarch64-glibc/ccache" \
     && rm /tmp/ccache.tar.xz
 
 ENTRYPOINT ["/bin/bash"]
