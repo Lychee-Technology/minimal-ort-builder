@@ -123,6 +123,7 @@ python3 "${ORT_SRC}/tools/ci_build/build.py" \
     --build_dir "${BUILD_DIR}" \
     --config Release \
     --skip_tests \
+    --allow_running_as_root \
     --minimal_build "${MINIMAL_BUILD}" \
     --disable_ml_ops \
     --disable_rtti \
