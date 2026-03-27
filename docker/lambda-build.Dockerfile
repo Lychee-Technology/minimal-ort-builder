@@ -11,7 +11,6 @@ RUN dnf install -y \
         git \
         gcc \
         gcc-c++ \
-        ccache \
         jq \
         python3 \
         python3-pip \
@@ -25,6 +24,7 @@ RUN pip3 install --no-cache-dir \
         numpy \
         sympy \
         packaging \
-        onnx
+        onnx \
+        ccache
 
 ENTRYPOINT ["/bin/bash"]
