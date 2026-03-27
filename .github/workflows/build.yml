@@ -95,7 +95,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ort-${{ matrix.target.target_id }}
+          name: ort-${{ matrix.target.target_id_safe }}
           path: output/ort-*.tar.gz
           if-no-files-found: error
 

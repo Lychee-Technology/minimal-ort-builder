@@ -26,6 +26,7 @@ def emit(data: dict) -> list[dict]:
         entries.append(
             {
                 "target_id": target["id"],
+                "target_id_safe": target["id"].replace("/", "__"),
                 "ort_version": ort_version,
                 "container_image": build["container_image"],
                 "cpu_tuning": build["cpu_tuning"],
