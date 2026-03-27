@@ -141,7 +141,7 @@ python3 "${ORT_SRC}/tools/ci_build/build.py" \
     --enable_reduced_operator_type_support \
     --include_ops_by_config "${OPERATOR_CONFIG}" \
     --parallel \
-    --cmake_extra_defines "${CMAKE_EXTRA_DEFINES[@]}"
+    --cmake_extra_defines ${CMAKE_EXTRA_DEFINES[@]}
 
 # ---------------------------------------------------------------------------
 # 9. Verify libonnxruntime.so exists
