@@ -21,8 +21,13 @@ RUN dnf install -y --allowerasing \
         which \
     && dnf clean all
 
-# Upgrade pip so scripts install to /usr/local/bin (not ~/.local/bin).
-RUN pip3 install --no-cache-dir --upgrade pip
+# The rpm-installed pip has no RECORD file so `pip install --upgrade pip` fails.
+# Use --ignore-installed to shadow it with a fresh copy in /usr/local, then
+# use that upgraded pip for all subsequent installs.
+RUN pip3 install --no-cache-dir --ignore-installed --prefix=/usr/local pip
+
+# Ensure /usr/local/bin (upgraded pip + scripts) takes priority over rpm paths.
+ENV PATH="/usr/local/bin:$PATH"
 
 RUN pip3 install --no-cache-dir \
         "huggingface_hub[cli]" \
@@ -30,9 +35,6 @@ RUN pip3 install --no-cache-dir \
         sympy \
         packaging \
         onnx
-
-# Ensure pip-installed scripts are on PATH.
-ENV PATH="/usr/local/bin:$PATH"
 
 # ccache is not in AL2023 repos and the PyPI package has no arm64 wheel.
 # Install the pre-built aarch64 glibc binary from the official ccache GitHub release.
