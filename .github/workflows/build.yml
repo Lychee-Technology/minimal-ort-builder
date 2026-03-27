@@ -90,7 +90,7 @@ jobs:
 
       - name: Show ccache stats
         if: always()
-        run: docker run --rm -v "$HOME/.cache/ccache:/root/.cache/ccache" -e CCACHE_DIR=/root/.cache/ccache ort-build:local ccache --show-stats
+        run: docker run --rm -v "$HOME/.cache/ccache:/root/.cache/ccache" -e CCACHE_DIR=/root/.cache/ccache ort-build:local -c "ccache --show-stats"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

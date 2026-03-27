@@ -13,6 +13,7 @@ RUN dnf install -y --allowerasing \
         jq \
         curl \
         xz \
+        patch \
         python3.11 \
         python3.11-pip \
         tar \
@@ -26,7 +27,7 @@ RUN dnf install -y --allowerasing \
 ENV PATH="/usr/local/bin:$PATH"
 
 RUN pip3 install --no-cache-dir \
-        cmake \
+        "cmake>=3.28,<4" \
         "huggingface_hub[cli]>=0.21,<1.0" \
         numpy \
         sympy \
