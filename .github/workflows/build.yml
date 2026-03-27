@@ -41,6 +41,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-arm64-ort-${{ matrix.target.ort_version }}-${{ matrix.target.target_id }}-${{ github.sha }}
+          restore-keys: |
+            ccache-arm64-ort-${{ matrix.target.ort_version }}-${{ matrix.target.target_id }}-
+            ccache-arm64-ort-${{ matrix.target.ort_version }}-
+
+      - name: Build Docker image
+        run: docker build -t ort-build:local -f docker/lambda-build.Dockerfile docker/
+
       - name: Build target in Lambda container
         env:
           TARGET_ID: ${{ matrix.target.target_id }}
@@ -54,11 +66,12 @@ jobs:
           MINIMAL_BUILD: ${{ matrix.target.minimal_build }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          mkdir -p output
+          mkdir -p ~/.cache/ccache output
           docker run --rm \
             -v "$(pwd)/scripts:/scripts:ro" \
             -v "$(pwd)/builds:/manifest:ro" \
             -v "$(pwd)/output:/output" \
+            -v "$HOME/.cache/ccache:/root/.cache/ccache" \
             -e TARGET_ID \
             -e ORT_VERSION \
             -e HF_REPO_ID \
@@ -70,13 +83,19 @@ jobs:
             -e MINIMAL_BUILD \
             -e HF_TOKEN \
             -e OUTPUT_DIR=/output \
-            "${{ matrix.target.container_image }}" \
+            -e PYTHONUNBUFFERED=1 \
+            -e CCACHE_DIR=/root/.cache/ccache \
+            ort-build:local \
             /scripts/build_target.sh
+
+      - name: Show ccache stats
+        if: always()
+        run: docker run --rm -v "$HOME/.cache/ccache:/root/.cache/ccache" -e CCACHE_DIR=/root/.cache/ccache ort-build:local -c "ccache --show-stats"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ort-${{ matrix.target.target_id }}
+          name: ort-${{ matrix.target.target_id_safe }}
           path: output/ort-*.tar.gz
           if-no-files-found: error
 
