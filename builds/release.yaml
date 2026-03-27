@@ -3,7 +3,7 @@ release:
   notes: ""
 
 onnxruntime:
-  version: "1.20.1"
+  version: "v1.24.4"
 
 build:
   container_image: "public.ecr.aws/lambda/provided:al2023"
@@ -14,9 +14,9 @@ build:
   minimal_build: extended
 
 targets:
-  - id: phi3-mini-q4f16
+  - id: jinaai/jina-embeddings-v5-text-nano-retrieval
     model:
-      repo_id: microsoft/Phi-3-mini-4k-instruct-onnx
+      repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
       revision: main
       primary: onnx/model_q4f16.onnx
       companions:
