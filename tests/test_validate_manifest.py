@@ -1,11 +1,13 @@
 """Tests for scripts/validate_manifest.py — written before implementation (TDD)."""
 
+import json
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
 
 SCRIPT = Path(__file__).parent.parent / "scripts" / "validate_manifest.py"
+EMIT_SCRIPT = Path(__file__).parent.parent / "scripts" / "emit_matrix.py"
 
 VALID_MANIFEST = textwrap.dedent("""\
     release:
@@ -281,3 +283,111 @@ def test_primary_non_string_path_fails():
     assert result.returncode != 0
     assert result.stderr
     assert "string" in result.stderr.lower() or "path" in result.stderr.lower()
+
+
+# ---------------------------------------------------------------------------
+# emit_matrix.py tests
+# ---------------------------------------------------------------------------
+
+
+def _run_emitter(stdin_text: str | None = None, file_arg: str | None = None):
+    """Invoke the emitter and return CompletedProcess."""
+    cmd = [sys.executable, str(EMIT_SCRIPT)]
+    if file_arg is not None:
+        cmd.append(file_arg)
+    else:
+        cmd.append("-")
+    return subprocess.run(
+        cmd,
+        input=stdin_text,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_emit_matrix_single_target():
+    """VALID fixture (companions: []) should produce a 1-entry matrix with correct fields."""
+    result = _run_emitter(stdin_text=VALID_MANIFEST)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    matrix = json.loads(result.stdout)
+    assert isinstance(matrix, list)
+    assert len(matrix) == 1
+    entry = matrix[0]
+    assert entry["target_id"] == "model-a"
+    assert entry["ort_version"] == "1.20.1"
+    assert entry["hf_repo_id"] == "org/repo"
+    assert entry["hf_primary"] == "onnx/model.onnx"
+    assert entry["hf_companions"] == ""
+    assert entry["cpu_tuning"] == "neoverse-n1"
+    assert entry["container_image"] == "public.ecr.aws/lambda/provided:al2023"
+
+
+def test_emit_matrix_companions_space_joined():
+    """companions list should be joined with spaces into a single string."""
+    manifest = textwrap.dedent("""\
+        release:
+          name: test-release
+          notes: ""
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions:
+                - onnx/model.onnx_data
+                - onnx/extra.bin
+    """)
+    result = _run_emitter(stdin_text=manifest)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    matrix = json.loads(result.stdout)
+    entry = matrix[0]
+    assert entry["hf_companions"] == "onnx/model.onnx_data onnx/extra.bin"
+
+
+def test_emit_matrix_multi_target():
+    """A manifest with two targets produces a 2-entry list with correct target_ids."""
+    manifest = textwrap.dedent("""\
+        release:
+          name: test-release
+          notes: ""
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+          - id: model-b
+            model:
+              repo_id: org/repo2
+              revision: v1
+              primary: onnx/model2.onnx
+              companions: []
+    """)
+    result = _run_emitter(stdin_text=manifest)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    matrix = json.loads(result.stdout)
+    assert isinstance(matrix, list)
+    assert len(matrix) == 2
+    ids = [entry["target_id"] for entry in matrix]
+    assert "model-a" in ids
+    assert "model-b" in ids
