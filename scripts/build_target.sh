@@ -48,7 +48,7 @@ mkdir -p "${MODEL_DIR}" "${BUILD_DIR}" "${STAGE_DIR}"
 # 3. Download primary model
 # ---------------------------------------------------------------------------
 echo "==> Downloading primary model: ${HF_PRIMARY}"
-huggingface-cli download "${HF_REPO_ID}" "${HF_PRIMARY}" \
+hf download "${HF_REPO_ID}" "${HF_PRIMARY}" \
     --revision "${HF_REVISION}" \
     --local-dir "${MODEL_DIR}"
 
@@ -59,7 +59,7 @@ if [ -n "${HF_COMPANIONS}" ]; then
     echo "==> Downloading companion files"
     for companion in ${HF_COMPANIONS}; do
         echo "    Downloading companion: ${companion}"
-        huggingface-cli download "${HF_REPO_ID}" "${companion}" \
+        hf download "${HF_REPO_ID}" "${companion}" \
             --revision "${HF_REVISION}" \
             --local-dir "${MODEL_DIR}"
     done

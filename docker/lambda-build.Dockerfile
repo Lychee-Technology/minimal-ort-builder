@@ -55,6 +55,7 @@ RUN curl -fsSL \
 # Sanity-check: all required tools must be on PATH before we ship the image.
 RUN clang --version && clang++ --version \
     && which huggingface-cli && huggingface-cli --help \
+    && which hf && hf --help \
     && which ccache && ccache --version
 
 ENTRYPOINT ["/bin/bash"]
