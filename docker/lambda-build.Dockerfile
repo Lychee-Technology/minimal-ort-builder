@@ -48,7 +48,7 @@ RUN curl -fsSL \
     && rm -rf /tmp/ccache.tar.gz /tmp/ccache-${CCACHE_VERSION}-linux-aarch64-musl-static
 
 # Sanity-check: both tools must be on PATH before we ship the image.
-RUN which huggingface-cli && huggingface-cli --version \
+RUN which huggingface-cli && huggingface-cli --help \
     && which ccache && ccache --version
 
 ENTRYPOINT ["/bin/bash"]
