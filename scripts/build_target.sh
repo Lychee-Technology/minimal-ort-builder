@@ -119,8 +119,8 @@ CMAKE_EXTRA_DEFINES=(
 
 if [ "${CPU_TUNING}" = "neoverse-n1" ]; then
     CMAKE_EXTRA_DEFINES+=(
-        "CMAKE_CXX_FLAGS=-mcpu=neoverse-n1"
-        "CMAKE_C_FLAGS=-mcpu=neoverse-n1"
+        "CMAKE_CXX_FLAGS=-mcpu=neoverse-n1 -mno-sve"
+        "CMAKE_C_FLAGS=-mcpu=neoverse-n1 -mno-sve"
     )
 fi
 
