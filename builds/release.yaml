@@ -1,0 +1,23 @@
+release:
+  name: "v1.0.0"
+  notes: ""
+
+onnxruntime:
+  version: "1.20.1"
+
+build:
+  container_image: "public.ecr.aws/lambda/provided:al2023"
+  target_os: linux
+  target_arch: arm64
+  cpu_tuning: neoverse-n1
+  execution_provider: cpu
+  minimal_build: extended
+
+targets:
+  - id: phi3-mini-q4f16
+    model:
+      repo_id: microsoft/Phi-3-mini-4k-instruct-onnx
+      revision: main
+      primary: onnx/model_q4f16.onnx
+      companions:
+        - onnx/model_q4f16.onnx_data
