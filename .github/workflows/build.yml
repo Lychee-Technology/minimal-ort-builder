@@ -1,0 +1,101 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.emit.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tooling deps
+        run: pip install pyyaml
+
+      - name: Validate manifest
+        run: python scripts/validate_manifest.py builds/release.yaml
+
+      - name: Emit matrix
+        id: emit
+        run: |
+          MATRIX=$(python scripts/emit_matrix.py builds/release.yaml)
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build target in Lambda container
+        env:
+          TARGET_ID: ${{ matrix.target.target_id }}
+          ORT_VERSION: ${{ matrix.target.ort_version }}
+          HF_REPO_ID: ${{ matrix.target.hf_repo_id }}
+          HF_REVISION: ${{ matrix.target.hf_revision }}
+          HF_PRIMARY: ${{ matrix.target.hf_primary }}
+          HF_COMPANIONS: ${{ matrix.target.hf_companions }}
+          CPU_TUNING: ${{ matrix.target.cpu_tuning }}
+          EXECUTION_PROVIDER: ${{ matrix.target.execution_provider }}
+          MINIMAL_BUILD: ${{ matrix.target.minimal_build }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          mkdir -p output
+          docker run --rm \
+            -v "$(pwd)/scripts:/scripts:ro" \
+            -v "$(pwd)/builds:/manifest:ro" \
+            -v "$(pwd)/output:/output" \
+            -e TARGET_ID \
+            -e ORT_VERSION \
+            -e HF_REPO_ID \
+            -e HF_REVISION \
+            -e HF_PRIMARY \
+            -e HF_COMPANIONS \
+            -e CPU_TUNING \
+            -e EXECUTION_PROVIDER \
+            -e MINIMAL_BUILD \
+            -e HF_TOKEN \
+            -e OUTPUT_DIR=/output \
+            "${{ matrix.target.container_image }}" \
+            /scripts/build_target.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ort-${{ matrix.target.target_id }}
+          path: output/ort-*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: ort-*
+          merge-multiple: true
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.tar.gz
+          tag_name: ${{ github.ref_name }}
