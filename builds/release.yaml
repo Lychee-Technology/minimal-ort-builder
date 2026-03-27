@@ -6,7 +6,7 @@ onnxruntime:
   version: "v1.24.4"
 
 build:
-  container_image: "public.ecr.aws/lambda/provided:al2023"
+  container_image: "public.ecr.aws/amazonlinux/amazonlinux:2023"
   target_os: linux
   target_arch: arm64
   cpu_tuning: neoverse-n1

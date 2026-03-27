@@ -1,7 +1,9 @@
-# Build environment for compiling ONNX Runtime on AWS Lambda AL2023.
+# Build environment for compiling ONNX Runtime targeting AWS Lambda AL2023.
+# Uses the standard AL2023 base image (not the Lambda provided image) to avoid
+# Lambda runtime init behaviour that can cause docker run to hang.
 # The build script is injected at run time via a bind mount — nothing is baked in.
 
-FROM public.ecr.aws/lambda/provided:al2023
+FROM public.ecr.aws/amazonlinux/amazonlinux:2023
 
 RUN dnf install -y \
         cmake \
