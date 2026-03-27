@@ -70,6 +70,7 @@ jobs:
             -e MINIMAL_BUILD \
             -e HF_TOKEN \
             -e OUTPUT_DIR=/output \
+            -e PYTHONUNBUFFERED=1 \
             "${{ matrix.target.container_image }}" \
             /scripts/build_target.sh
 
