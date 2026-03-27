@@ -14,7 +14,12 @@ int main(int argc, char *argv[]) {
     }
     const char *model_path = argv[1];
 
-    const OrtApi *api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    const OrtApiBase *base = OrtGetApiBase();
+    if (!base) {
+        fprintf(stderr, "SMOKE FAIL: OrtGetApiBase() returned NULL\n");
+        return 1;
+    }
+    const OrtApi *api = base->GetApi(ORT_API_VERSION);
     if (!api) {
         fprintf(stderr, "SMOKE FAIL: could not get ORT API\n");
         return 1;

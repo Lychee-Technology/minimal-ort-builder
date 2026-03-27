@@ -9,6 +9,7 @@ RUN dnf install -y \
         git \
         gcc \
         gcc-c++ \
+        jq \
         python3 \
         python3-pip \
         tar \

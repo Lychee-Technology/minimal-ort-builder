@@ -37,6 +37,7 @@ mkdir -p "${OUTPUT_DIR}"
 # ---------------------------------------------------------------------------
 echo "==> Creating working directories"
 WORK_DIR=$(mktemp -d)
+trap 'rm -rf "${WORK_DIR}"' EXIT
 MODEL_DIR="${WORK_DIR}/model"
 ORT_SRC="${WORK_DIR}/onnxruntime"
 BUILD_DIR="${WORK_DIR}/build"
@@ -47,16 +48,9 @@ mkdir -p "${MODEL_DIR}" "${BUILD_DIR}" "${STAGE_DIR}"
 # 3. Download primary model
 # ---------------------------------------------------------------------------
 echo "==> Downloading primary model: ${HF_PRIMARY}"
-if [ -n "${HF_TOKEN:-}" ]; then
-    huggingface-cli download "${HF_REPO_ID}" "${HF_PRIMARY}" \
-        --revision "${HF_REVISION}" \
-        --local-dir "${MODEL_DIR}" \
-        --token "${HF_TOKEN}"
-else
-    huggingface-cli download "${HF_REPO_ID}" "${HF_PRIMARY}" \
-        --revision "${HF_REVISION}" \
-        --local-dir "${MODEL_DIR}"
-fi
+huggingface-cli download "${HF_REPO_ID}" "${HF_PRIMARY}" \
+    --revision "${HF_REVISION}" \
+    --local-dir "${MODEL_DIR}"
 
 # ---------------------------------------------------------------------------
 # 4. Download each companion file
@@ -65,16 +59,9 @@ if [ -n "${HF_COMPANIONS}" ]; then
     echo "==> Downloading companion files"
     for companion in ${HF_COMPANIONS}; do
         echo "    Downloading companion: ${companion}"
-        if [ -n "${HF_TOKEN:-}" ]; then
-            huggingface-cli download "${HF_REPO_ID}" "${companion}" \
-                --revision "${HF_REVISION}" \
-                --local-dir "${MODEL_DIR}" \
-                --token "${HF_TOKEN}"
-        else
-            huggingface-cli download "${HF_REPO_ID}" "${companion}" \
-                --revision "${HF_REVISION}" \
-                --local-dir "${MODEL_DIR}"
-        fi
+        huggingface-cli download "${HF_REPO_ID}" "${companion}" \
+            --revision "${HF_REVISION}" \
+            --local-dir "${MODEL_DIR}"
     done
 fi
 
@@ -121,13 +108,12 @@ echo "==> Building ORT (this will take a while)"
 
 CMAKE_EXTRA_DEFINES=(
     "onnxruntime_BUILD_SHARED_LIB=ON"
-    "onnxruntime_DEX_NUM_THREADS=0"
 )
 
 if [ "${CPU_TUNING}" = "neoverse-n1" ]; then
     CMAKE_EXTRA_DEFINES+=(
-        "-DCMAKE_CXX_FLAGS=-mcpu=neoverse-n1"
-        "-DCMAKE_C_FLAGS=-mcpu=neoverse-n1"
+        "CMAKE_CXX_FLAGS=-mcpu=neoverse-n1"
+        "CMAKE_C_FLAGS=-mcpu=neoverse-n1"
     )
 fi
 
@@ -141,7 +127,7 @@ python3 "${ORT_SRC}/tools/ci_build/build.py" \
     --enable_reduced_operator_type_support \
     --include_ops_by_config "${OPERATOR_CONFIG}" \
     --parallel \
-    --cmake_extra_defines ${CMAKE_EXTRA_DEFINES[@]}
+    --cmake_extra_defines "${CMAKE_EXTRA_DEFINES[@]}"
 
 # ---------------------------------------------------------------------------
 # 9. Verify libonnxruntime.so exists
@@ -185,19 +171,18 @@ echo "==> Staging artifacts"
 cp "${BUILT_SO}" "${STAGE_DIR}/libonnxruntime.so"
 cp "${OPERATOR_CONFIG}" "${STAGE_DIR}/operators.config"
 
-cat > "${STAGE_DIR}/build-info.json" <<EOF
-{
-  "target_id": "${TARGET_ID}",
-  "ort_version": "${ORT_VERSION}",
-  "ort_git_sha": "$(git -C "${ORT_SRC}" rev-parse HEAD)",
-  "hf_repo_id": "${HF_REPO_ID}",
-  "hf_revision": "${HF_REVISION}",
-  "hf_primary": "${HF_PRIMARY}",
-  "cpu_tuning": "${CPU_TUNING}",
-  "execution_provider": "${EXECUTION_PROVIDER}",
-  "minimal_build": "${MINIMAL_BUILD}"
-}
-EOF
+jq -n \
+  --arg target_id          "${TARGET_ID}" \
+  --arg ort_version        "${ORT_VERSION}" \
+  --arg ort_git_sha        "$(git -C "${ORT_SRC}" rev-parse HEAD)" \
+  --arg hf_repo_id         "${HF_REPO_ID}" \
+  --arg hf_revision        "${HF_REVISION}" \
+  --arg hf_primary         "${HF_PRIMARY}" \
+  --arg cpu_tuning         "${CPU_TUNING}" \
+  --arg execution_provider "${EXECUTION_PROVIDER}" \
+  --arg minimal_build      "${MINIMAL_BUILD}" \
+  '{target_id:$target_id,ort_version:$ort_version,ort_git_sha:$ort_git_sha,hf_repo_id:$hf_repo_id,hf_revision:$hf_revision,hf_primary:$hf_primary,cpu_tuning:$cpu_tuning,execution_provider:$execution_provider,minimal_build:$minimal_build}' \
+  > "${STAGE_DIR}/build-info.json"
 
 if [ -f "/manifest/release.yaml" ]; then
     echo "    Copying manifest snapshot"
@@ -205,7 +190,7 @@ if [ -f "/manifest/release.yaml" ]; then
 fi
 
 echo "    Computing SHA256SUMS"
-(cd "${STAGE_DIR}" && sha256sum libonnxruntime.so operators.config build-info.json > SHA256SUMS)
+(cd "${STAGE_DIR}" && sha256sum libonnxruntime.so operators.config build-info.json smoke-test.log > SHA256SUMS)
 
 # ---------------------------------------------------------------------------
 # 12. Create tarball
