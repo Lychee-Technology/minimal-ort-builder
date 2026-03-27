@@ -119,25 +119,46 @@ CMAKE_EXTRA_DEFINES=(
 
 if [ "${CPU_TUNING}" = "neoverse-n1" ]; then
     CMAKE_EXTRA_DEFINES+=(
-        # Neoverse N1 is ARMv8.2-A + dotprod + fp16 (among others).
-        # Of all the N1 ISA extensions, only dotprod and fp16 have dedicated
-        # MLAS kernel code in ORT v1.24.4:
-        #   +dotprod  QgemmU8X8KernelUdot.S, QgemmS8S8KernelSdot.S, etc.
+        # Neoverse N1 = ARMv8.2-A baseline + dotprod + fp16 + rcpc (FEAT_LRCPC).
+        #
+        # Extensions that generate different code automatically (Clang, no intrinsics):
+        #
+        #   +dotprod  MLAS: QgemmU8X8KernelUdot.S, QgemmS8S8KernelSdot.S, etc.
         #             (4x INT8 GEMM throughput; selected at runtime via HWCAP_ASIMDDP)
-        #   +fp16     HalfGemmKernelNeon.S and 9 other half-precision kernel files
-        #             (all compiled with -march=armv8.2-a+fp16 per-file in cmake)
-        # Other N1 features (crypto, crc, lse, rcpc, rdm, ras, ssbs) have zero
-        # references in any MLAS source and do not affect libonnxruntime.so.
-        # Note: MLAS kernels set their own -march per-file via
-        # set_source_files_properties, so this global flag only affects non-MLAS
-        # ORT glue code. We still set +dotprod+fp16 here so any ORT code outside
-        # MLAS that checks __ARM_FEATURE_DOTPROD / __ARM_FEATURE_FP16_* sees them.
-        # We do NOT include +sve — and pass --no_sve below — because Clang 20
-        # targeting neoverse-n1 would define __ARM_FEATURE_SVE, causing linker
-        # errors against SVE symbols absent in a minimal build.
-        # -mtune gives Clang the Neoverse-N1 pipeline model for scheduling.
-        "CMAKE_CXX_FLAGS=-march=armv8.2-a+dotprod+fp16 -mtune=neoverse-n1"
-        "CMAKE_C_FLAGS=-march=armv8.2-a+dotprod+fp16 -mtune=neoverse-n1"
+        #             Non-MLAS: Clang auto-vectorizes int8 dot-product loops to
+        #             sdot/udot. Zero effect on float loops.
+        #
+        #   +fp16     MLAS: HalfGemmKernelNeon.S + 9 other half-precision kernel
+        #             files compiled per-file with -march=armv8.2-a+fp16 in cmake.
+        #             Non-MLAS: enables vectorized _Float16 arithmetic. No effect
+        #             on float (fp32) loops — Clang never auto-downcasts fp32→fp16.
+        #
+        #   +rcpc     NOT in armv8.2-a baseline; must be listed explicitly.
+        #             Clang lowers memory_order_acquire loads to ldapr instead of
+        #             ldar. ldapr is RCpc (cheaper: only orders with prior stores,
+        #             not prior loads) and avoids pipeline stalls on N1. ORT's
+        #             thread pool uses acquire/release heavily for barrier counters
+        #             and task queue synchronisation → measurable latency reduction.
+        #
+        # armv8.2-a already implies: lse (ldadd/cas auto-generated from
+        #   std::atomic RMW — eliminates LL/SC retry loops in the thread pool),
+        #   crc, rdm. Listing them explicitly would be redundant.
+        #
+        # Extensions with zero codegen effect (Clang never auto-generates them):
+        #   crypto (AES/SHA require explicit intrinsics)
+        #   ras    (microarchitectural error-reporting, no user-space insns)
+        #   ssbs   (speculative store bypass: OS/hypervisor PSTATE bit, not code)
+        #
+        # MLAS kernels override their own -march per-file via
+        # set_source_files_properties, so this global flag only influences the
+        # non-MLAS ORT C++ code (op dispatch, thread pool, allocators, etc.).
+        #
+        # +sve is intentionally absent — --no_sve is passed below — because
+        # Clang 20 auto-enables SVE for neoverse-n1 via -mcpu, defining
+        # __ARM_FEATURE_SVE and causing linker errors against SVE symbols that
+        # are absent in a minimal build.
+        "CMAKE_CXX_FLAGS=-march=armv8.2-a+dotprod+fp16+rcpc -mtune=neoverse-n1"
+        "CMAKE_C_FLAGS=-march=armv8.2-a+dotprod+fp16+rcpc -mtune=neoverse-n1"
     )
 fi
 
