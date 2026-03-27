@@ -97,9 +97,9 @@ git clone --depth 1 --branch "${ORT_VERSION}" \
 # ---------------------------------------------------------------------------
 echo "==> Generating reduced operator config"
 OPERATOR_CONFIG="${WORK_DIR}/operators.config"
-python3 "${ORT_SRC}/tools/python/gen_opkernel_def.py" \
-    --models "${PRIMARY_PATH}" \
-    --output "${OPERATOR_CONFIG}"
+python3 "${ORT_SRC}/tools/python/create_reduced_build_config.py" \
+    "${MODEL_DIR}" \
+    "${OPERATOR_CONFIG}"
 
 # ---------------------------------------------------------------------------
 # 8. Build ORT
