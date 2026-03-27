@@ -21,6 +21,9 @@ RUN dnf install -y --allowerasing \
         which \
     && dnf clean all
 
+# Upgrade pip so scripts install to /usr/local/bin (not ~/.local/bin).
+RUN pip3 install --no-cache-dir --upgrade pip
+
 RUN pip3 install --no-cache-dir \
         "huggingface_hub[cli]" \
         numpy \
@@ -28,15 +31,18 @@ RUN pip3 install --no-cache-dir \
         packaging \
         onnx
 
+# Ensure pip-installed scripts are on PATH.
+ENV PATH="/usr/local/bin:$PATH"
+
 # ccache is not in AL2023 repos and the PyPI package has no arm64 wheel.
-# Install the pre-built arm64 binary from the official ccache GitHub release.
+# Install the pre-built aarch64 glibc binary from the official ccache GitHub release.
 ARG CCACHE_VERSION=4.13.2
 RUN curl -fsSL \
       "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-aarch64-glibc.tar.xz" \
       -o /tmp/ccache.tar.xz \
-    && tar -xf /tmp/ccache.tar.xz -C /usr/local/bin \
-         --strip-components=1 \
-         "ccache-${CCACHE_VERSION}-linux-aarch64-glibc/ccache" \
-    && rm /tmp/ccache.tar.xz
+    && tar -xJf /tmp/ccache.tar.xz -C /tmp \
+    && mv /tmp/ccache-${CCACHE_VERSION}-linux-aarch64-glibc/ccache /usr/local/bin/ccache \
+    && chmod +x /usr/local/bin/ccache \
+    && rm -rf /tmp/ccache.tar.xz /tmp/ccache-${CCACHE_VERSION}-linux-aarch64-glibc
 
 ENTRYPOINT ["/bin/bash"]
