@@ -1,6 +1,8 @@
 # Build environment for compiling ONNX Runtime targeting AWS Lambda AL2023.
 # Uses the standard AL2023 base image (not the Lambda provided image) to avoid
 # Lambda runtime init behaviour that can cause docker run to hang.
+# Uses Clang 20 + lld 20 (available in AL2023 repos) instead of GCC 11 to avoid
+# the -mcpu=neoverse-n1 / -march=armv8-a conflict present in GCC 11.
 # The build script is injected at run time via a bind mount — nothing is baked in.
 
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023
@@ -8,8 +10,8 @@ FROM public.ecr.aws/amazonlinux/amazonlinux:2023
 RUN dnf install -y --allowerasing \
         ninja-build \
         git \
-        gcc \
-        gcc-c++ \
+        clang20 \
+        lld20 \
         jq \
         curl \
         xz \
@@ -20,8 +22,11 @@ RUN dnf install -y --allowerasing \
         gzip \
         which \
     && dnf clean all \
-    && ln -sf /usr/bin/python3.11 /usr/local/bin/python3 \
-    && ln -sf /usr/bin/pip3.11 /usr/local/bin/pip3
+    && ln -sf /usr/bin/clang-20    /usr/local/bin/clang \
+    && ln -sf /usr/bin/clang++-20  /usr/local/bin/clang++ \
+    && ln -sf /usr/bin/ld.lld-20   /usr/local/bin/ld.lld \
+    && ln -sf /usr/bin/python3.11  /usr/local/bin/python3 \
+    && ln -sf /usr/bin/pip3.11     /usr/local/bin/pip3
 
 # Ensure /usr/local/bin (python3/pip3 symlinks + pip-installed scripts) comes first.
 ENV PATH="/usr/local/bin:$PATH"
@@ -47,8 +52,9 @@ RUN curl -fsSL \
     && chmod +x /usr/local/bin/ccache \
     && rm -rf /tmp/ccache.tar.gz /tmp/ccache-${CCACHE_VERSION}-linux-aarch64-musl-static
 
-# Sanity-check: both tools must be on PATH before we ship the image.
-RUN which huggingface-cli && huggingface-cli --help \
+# Sanity-check: all required tools must be on PATH before we ship the image.
+RUN clang --version && clang++ --version \
+    && which huggingface-cli && huggingface-cli --help \
     && which ccache && ccache --version
 
 ENTRYPOINT ["/bin/bash"]

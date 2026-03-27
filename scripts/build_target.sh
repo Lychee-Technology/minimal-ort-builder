@@ -108,6 +108,11 @@ echo "==> Building ORT (this will take a while)"
 
 CMAKE_EXTRA_DEFINES=(
     "onnxruntime_BUILD_SHARED_LIB=ON"
+    "CMAKE_C_COMPILER=clang"
+    "CMAKE_CXX_COMPILER=clang++"
+    "CMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld"
+    "CMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld"
+    "CMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld"
     "CMAKE_C_COMPILER_LAUNCHER=ccache"
     "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
 )
@@ -169,7 +174,7 @@ SMOKE_SRC="$(dirname "$0")/smoke_test.c"
 SMOKE_BIN="${WORK_DIR}/smoke_test"
 SMOKE_LOG="${STAGE_DIR}/smoke-test.log"
 
-gcc -o "${SMOKE_BIN}" "${SMOKE_SRC}" \
+clang -o "${SMOKE_BIN}" "${SMOKE_SRC}" \
     -I "${ORT_SRC}/include/onnxruntime/core/session" \
     -L "$(dirname "${BUILT_SO}")" \
     -lonnxruntime \
