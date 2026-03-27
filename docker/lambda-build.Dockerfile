@@ -47,4 +47,8 @@ RUN curl -fsSL \
     && chmod +x /usr/local/bin/ccache \
     && rm -rf /tmp/ccache.tar.xz /tmp/ccache-${CCACHE_VERSION}-linux-aarch64-glibc
 
+# Sanity-check: both tools must be on PATH before we ship the image.
+RUN which huggingface-cli && huggingface-cli --version \
+    && which ccache && ccache --version
+
 ENTRYPOINT ["/bin/bash"]
