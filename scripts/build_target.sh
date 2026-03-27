@@ -143,7 +143,26 @@ if [ ! -f "${BUILT_SO}" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 10. Compile and run smoke test
+# 10. Convert ONNX model to ORT format (minimal build requires ORT format)
+# ---------------------------------------------------------------------------
+echo "==> Converting ONNX model to ORT format"
+ORT_MODEL_DIR="${WORK_DIR}/ort_model"
+mkdir -p "${ORT_MODEL_DIR}"
+python3 "${ORT_SRC}/tools/python/convert_onnx_models_to_ort.py" \
+    "${MODEL_DIR}/$(dirname "${HF_PRIMARY}")" \
+    --optimization_style Fixed \
+    --output_dir "${ORT_MODEL_DIR}"
+
+# The converter mirrors the directory structure; find the .ort file
+ORT_MODEL_PATH=$(find "${ORT_MODEL_DIR}" -name "*.ort" | head -1)
+if [ -z "${ORT_MODEL_PATH}" ]; then
+    echo "ERROR: no .ort model found after conversion in ${ORT_MODEL_DIR}" >&2
+    exit 1
+fi
+echo "    ORT model: ${ORT_MODEL_PATH}"
+
+# ---------------------------------------------------------------------------
+# 11. Compile and run smoke test
 # ---------------------------------------------------------------------------
 echo "==> Running smoke test"
 SMOKE_SRC="$(dirname "$0")/smoke_test.c"
@@ -157,7 +176,7 @@ gcc -o "${SMOKE_BIN}" "${SMOKE_SRC}" \
     -Wl,-rpath,"$(dirname "${BUILT_SO}")"
 
 set +e
-"${SMOKE_BIN}" "${PRIMARY_PATH}" 2>&1 | tee "${SMOKE_LOG}"
+"${SMOKE_BIN}" "${ORT_MODEL_PATH}" 2>&1 | tee "${SMOKE_LOG}"
 SMOKE_EXIT=${PIPESTATUS[0]}
 set -e
 
@@ -167,12 +186,13 @@ if [ "${SMOKE_EXIT}" -ne 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 11. Stage artifacts
+# 12. Stage artifacts
 # ---------------------------------------------------------------------------
 echo "==> Staging artifacts"
 
 cp "${BUILT_SO}" "${STAGE_DIR}/libonnxruntime.so"
 cp "${OPERATOR_CONFIG}" "${STAGE_DIR}/operators.config"
+cp "${ORT_MODEL_PATH}" "${STAGE_DIR}/model.ort"
 
 jq -n \
   --arg target_id          "${TARGET_ID}" \
@@ -193,17 +213,17 @@ if [ -f "/manifest/release.yaml" ]; then
 fi
 
 echo "    Computing SHA256SUMS"
-(cd "${STAGE_DIR}" && sha256sum libonnxruntime.so operators.config build-info.json smoke-test.log > SHA256SUMS)
+(cd "${STAGE_DIR}" && sha256sum libonnxruntime.so operators.config model.ort build-info.json smoke-test.log > SHA256SUMS)
 
 # ---------------------------------------------------------------------------
-# 12. Create tarball
+# 13. Create tarball
 # ---------------------------------------------------------------------------
 echo "==> Creating tarball"
 TARBALL="${OUTPUT_DIR}/ort-${ORT_VERSION}-${TARGET_ID}-linux-arm64.tar.gz"
 tar -czf "${TARBALL}" -C "${STAGE_DIR}" .
 
 # ---------------------------------------------------------------------------
-# 13. Success
+# 14. Success
 # ---------------------------------------------------------------------------
 echo "==> Build complete"
 echo "    Tarball: ${TARBALL}"
