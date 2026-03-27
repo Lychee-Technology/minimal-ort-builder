@@ -119,17 +119,25 @@ CMAKE_EXTRA_DEFINES=(
 
 if [ "${CPU_TUNING}" = "neoverse-n1" ]; then
     CMAKE_EXTRA_DEFINES+=(
-        # -march sets the ISA baseline for non-MLAS code (enables LSE atomics
-        # in the thread-pool, fp16/dotprod in any ORT glue code that checks
-        # __ARM_FEATURE_*).  We do NOT include +sve here — and we pass
-        # --no_sve below — because -mcpu=neoverse-n1 with Clang 20 would
-        # define __ARM_FEATURE_SVE and cause linker errors against SVE symbols
-        # that are absent in a minimal build.  MLAS kernel files override their
-        # own -march per-file via set_source_files_properties, so the global
-        # flag has no effect on the specialised kernel selection.
+        # Neoverse N1 is ARMv8.2-A + dotprod + fp16 (among others).
+        # Of all the N1 ISA extensions, only dotprod and fp16 have dedicated
+        # MLAS kernel code in ORT v1.24.4:
+        #   +dotprod  QgemmU8X8KernelUdot.S, QgemmS8S8KernelSdot.S, etc.
+        #             (4x INT8 GEMM throughput; selected at runtime via HWCAP_ASIMDDP)
+        #   +fp16     HalfGemmKernelNeon.S and 9 other half-precision kernel files
+        #             (all compiled with -march=armv8.2-a+fp16 per-file in cmake)
+        # Other N1 features (crypto, crc, lse, rcpc, rdm, ras, ssbs) have zero
+        # references in any MLAS source and do not affect libonnxruntime.so.
+        # Note: MLAS kernels set their own -march per-file via
+        # set_source_files_properties, so this global flag only affects non-MLAS
+        # ORT glue code. We still set +dotprod+fp16 here so any ORT code outside
+        # MLAS that checks __ARM_FEATURE_DOTPROD / __ARM_FEATURE_FP16_* sees them.
+        # We do NOT include +sve — and pass --no_sve below — because Clang 20
+        # targeting neoverse-n1 would define __ARM_FEATURE_SVE, causing linker
+        # errors against SVE symbols absent in a minimal build.
         # -mtune gives Clang the Neoverse-N1 pipeline model for scheduling.
-        "CMAKE_CXX_FLAGS=-march=armv8.2-a+dotprod+fp16+lse -mtune=neoverse-n1"
-        "CMAKE_C_FLAGS=-march=armv8.2-a+dotprod+fp16+lse -mtune=neoverse-n1"
+        "CMAKE_CXX_FLAGS=-march=armv8.2-a+dotprod+fp16 -mtune=neoverse-n1"
+        "CMAKE_C_FLAGS=-march=armv8.2-a+dotprod+fp16 -mtune=neoverse-n1"
     )
 fi
 
