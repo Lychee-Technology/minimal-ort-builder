@@ -119,11 +119,17 @@ CMAKE_EXTRA_DEFINES=(
 
 if [ "${CPU_TUNING}" = "neoverse-n1" ]; then
     CMAKE_EXTRA_DEFINES+=(
-        # Use -mtune (not -mcpu) so Clang tunes for neoverse-n1 without
-        # auto-enabling SVE. -mcpu=neoverse-n1 with Clang 20 defines
-        # __ARM_FEATURE_SVE which conflicts with ORT's SVE kernel gating.
-        "CMAKE_CXX_FLAGS=-mtune=neoverse-n1"
-        "CMAKE_C_FLAGS=-mtune=neoverse-n1"
+        # -march sets the ISA baseline for non-MLAS code (enables LSE atomics
+        # in the thread-pool, fp16/dotprod in any ORT glue code that checks
+        # __ARM_FEATURE_*).  We do NOT include +sve here — and we pass
+        # --no_sve below — because -mcpu=neoverse-n1 with Clang 20 would
+        # define __ARM_FEATURE_SVE and cause linker errors against SVE symbols
+        # that are absent in a minimal build.  MLAS kernel files override their
+        # own -march per-file via set_source_files_properties, so the global
+        # flag has no effect on the specialised kernel selection.
+        # -mtune gives Clang the Neoverse-N1 pipeline model for scheduling.
+        "CMAKE_CXX_FLAGS=-march=armv8.2-a+dotprod+fp16+lse -mtune=neoverse-n1"
+        "CMAKE_C_FLAGS=-march=armv8.2-a+dotprod+fp16+lse -mtune=neoverse-n1"
     )
 fi
 
@@ -236,7 +242,11 @@ echo "    Computing SHA256SUMS"
 # 13. Create tarball
 # ---------------------------------------------------------------------------
 echo "==> Creating tarball"
-TARBALL="${OUTPUT_DIR}/ort-${ORT_VERSION}-${TARGET_ID}-linux-arm64.tar.gz"
+# TARGET_ID may contain '/' (e.g. "jinaai/jina-embeddings-v5-text-nano-retrieval");
+# replace with '__' so the tarball is a flat file under OUTPUT_DIR.
+TARGET_ID_SAFE="${TARGET_ID//\//__}"
+TARBALL="${OUTPUT_DIR}/ort-${ORT_VERSION}-${TARGET_ID_SAFE}-linux-arm64.tar.gz"
+mkdir -p "${OUTPUT_DIR}"
 tar -czf "${TARBALL}" -C "${STAGE_DIR}" .
 
 # ---------------------------------------------------------------------------
@@ -244,3 +254,4 @@ tar -czf "${TARBALL}" -C "${STAGE_DIR}" .
 # ---------------------------------------------------------------------------
 echo "==> Build complete"
 echo "    Tarball: ${TARBALL}"
+echo "    Size:    $(du -sh "${TARBALL}" | cut -f1)"
