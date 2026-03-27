@@ -14,19 +14,16 @@ RUN dnf install -y --allowerasing \
         jq \
         curl \
         xz \
-        python3 \
-        python3-pip \
+        python3.11 \
+        python3.11-pip \
         tar \
         gzip \
         which \
-    && dnf clean all
+    && dnf clean all \
+    && ln -sf /usr/bin/python3.11 /usr/local/bin/python3 \
+    && ln -sf /usr/bin/pip3.11 /usr/local/bin/pip3
 
-# The rpm-installed pip has no RECORD file so `pip install --upgrade pip` fails.
-# Use --ignore-installed to shadow it with a fresh copy in /usr/local, then
-# use that upgraded pip for all subsequent installs.
-RUN pip3 install --no-cache-dir --ignore-installed --prefix=/usr/local pip
-
-# Ensure /usr/local/bin (upgraded pip + scripts) takes priority over rpm paths.
+# Ensure /usr/local/bin (python3/pip3 symlinks + pip-installed scripts) comes first.
 ENV PATH="/usr/local/bin:$PATH"
 
 RUN pip3 install --no-cache-dir \
