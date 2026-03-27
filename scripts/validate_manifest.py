@@ -24,8 +24,10 @@ def _require_keys(mapping: dict, keys: list[str], context: str) -> None:
             _fail(f"missing required key '{key}' in {context}")
 
 
-def _is_safe_path(path: str) -> bool:
+def _is_safe_path(path) -> bool:
     """Return True if the path is relative and contains no '..' segments."""
+    if not isinstance(path, str):
+        _fail(f"path value must be a string, got {type(path).__name__}")
     if path.startswith("/"):
         return False
     parts = path.replace("\\", "/").split("/")
@@ -87,6 +89,12 @@ def validate(data: dict) -> None:
 
         primary = model["primary"]
         companions = model["companions"] or []
+
+        # Rule 9b: companions must be a list
+        if not isinstance(companions, list):
+            _fail(
+                f"{ctx}.model: 'companions' must be a list, got {type(companions).__name__}"
+            )
 
         # Rule 10: primary must NOT appear in companions
         if primary in companions:

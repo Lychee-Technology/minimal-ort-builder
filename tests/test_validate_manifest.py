@@ -187,3 +187,97 @@ def test_missing_required_field_fails():
     """)
     result = _run(stdin_text=manifest)
     assert result.returncode != 0
+    assert result.stderr  # some error message must be emitted
+    assert "onnxruntime" in result.stderr.lower() or "missing" in result.stderr.lower()
+
+
+def test_missing_release_field_fails():
+    """Missing top-level 'release' key should also be caught and reported."""
+    manifest = textwrap.dedent("""\
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode != 0
+    assert result.stderr
+    assert "release" in result.stderr.lower() or "missing" in result.stderr.lower()
+
+
+def test_file_path_argument():
+    """Passing a real file path (not '-') should exit 0 and print OK."""
+    release_yaml = Path(__file__).parent.parent / "builds" / "release.yaml"
+    result = _run(file_arg=str(release_yaml))
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert "OK" in result.stdout
+
+
+def test_companions_not_a_list_fails():
+    """companions: oops (a string) must be rejected, not silently mis-handled."""
+    manifest = textwrap.dedent("""\
+        release:
+          name: test-release
+          notes: ""
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: oops
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode != 0
+    assert result.stderr
+    assert "companions" in result.stderr.lower() or "list" in result.stderr.lower()
+
+
+def test_primary_non_string_path_fails():
+    """primary: 42 (an integer) must be rejected cleanly, not crash."""
+    manifest = textwrap.dedent("""\
+        release:
+          name: test-release
+          notes: ""
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: 42
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode != 0
+    assert result.stderr
+    assert "string" in result.stderr.lower() or "path" in result.stderr.lower()
