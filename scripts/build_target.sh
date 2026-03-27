@@ -88,8 +88,8 @@ fi
 # ---------------------------------------------------------------------------
 # 6. Clone ORT source
 # ---------------------------------------------------------------------------
-echo "==> Cloning ORT v${ORT_VERSION}"
-git clone --depth 1 --branch "v${ORT_VERSION}" \
+echo "==> Cloning ORT ${ORT_VERSION}"
+git clone --depth 1 --branch "${ORT_VERSION}" \
     https://github.com/microsoft/onnxruntime.git "${ORT_SRC}"
 
 # ---------------------------------------------------------------------------
