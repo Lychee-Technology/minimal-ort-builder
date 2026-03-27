@@ -41,6 +41,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-arm64-ort-${{ matrix.target.ort_version }}-${{ matrix.target.target_id }}-${{ github.sha }}
+          restore-keys: |
+            ccache-arm64-ort-${{ matrix.target.ort_version }}-${{ matrix.target.target_id }}-
+            ccache-arm64-ort-${{ matrix.target.ort_version }}-
+
+      - name: Restore pip cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-arm64-${{ hashFiles('docker/lambda-build.Dockerfile') }}
+          restore-keys: |
+            pip-arm64-
+
       - name: Build target in Lambda container
         env:
           TARGET_ID: ${{ matrix.target.target_id }}
@@ -54,11 +71,13 @@ jobs:
           MINIMAL_BUILD: ${{ matrix.target.minimal_build }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          mkdir -p output
+          mkdir -p ~/.cache/ccache ~/.cache/pip output
           docker run --rm \
             -v "$(pwd)/scripts:/scripts:ro" \
             -v "$(pwd)/builds:/manifest:ro" \
             -v "$(pwd)/output:/output" \
+            -v "$HOME/.cache/ccache:/root/.cache/ccache" \
+            -v "$HOME/.cache/pip:/root/.cache/pip" \
             -e TARGET_ID \
             -e ORT_VERSION \
             -e HF_REPO_ID \
@@ -71,8 +90,13 @@ jobs:
             -e HF_TOKEN \
             -e OUTPUT_DIR=/output \
             -e PYTHONUNBUFFERED=1 \
+            -e CCACHE_DIR=/root/.cache/ccache \
             "${{ matrix.target.container_image }}" \
             /scripts/build_target.sh
+
+      - name: Show ccache stats
+        if: always()
+        run: docker run --rm -v "$HOME/.cache/ccache:/root/.cache/ccache" -e CCACHE_DIR=/root/.cache/ccache "${{ matrix.target.container_image }}" ccache --show-stats
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
