@@ -320,6 +320,9 @@ def test_emit_matrix_single_target():
     assert entry["hf_companions"] == ""
     assert entry["cpu_tuning"] == "neoverse-n1"
     assert entry["container_image"] == "public.ecr.aws/lambda/provided:al2023"
+    assert entry["hf_revision"] == "main"
+    assert entry["execution_provider"] == "cpu"
+    assert entry["minimal_build"] == "extended"
 
 
 def test_emit_matrix_companions_space_joined():
@@ -389,5 +392,34 @@ def test_emit_matrix_multi_target():
     assert isinstance(matrix, list)
     assert len(matrix) == 2
     ids = [entry["target_id"] for entry in matrix]
-    assert "model-a" in ids
-    assert "model-b" in ids
+    assert ids == ["model-a", "model-b"]
+
+
+def test_emit_matrix_companions_null():
+    """companions: null (YAML scalar) should produce hf_companions == ""."""
+    manifest = textwrap.dedent("""\
+        release:
+          name: test-release
+          notes: ""
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: null
+    """)
+    result = _run_emitter(stdin_text=manifest)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    matrix = json.loads(result.stdout)
+    entry = matrix[0]
+    assert entry["hf_companions"] == ""

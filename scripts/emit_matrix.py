@@ -62,8 +62,12 @@ def main() -> None:
         print(f"ERROR: YAML parse error: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    matrix = emit(data)
-    print(json.dumps(matrix))
+    try:
+        matrix = emit(data)
+    except (KeyError, TypeError) as exc:
+        print(f"ERROR: malformed manifest: {exc}", file=sys.stderr)
+        sys.exit(1)
+    print(json.dumps(matrix, sort_keys=True))
 
 
 if __name__ == "__main__":
