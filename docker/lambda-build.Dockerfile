@@ -31,7 +31,8 @@ RUN pip3 install --no-cache-dir \
         numpy \
         sympy \
         packaging \
-        onnx
+        onnx \
+        flatbuffers
 
 # ccache is not in AL2023 repos and the PyPI package has no arm64 wheel.
 # Use the musl-static build so it runs on any glibc version without linking issues.
