@@ -6,7 +6,6 @@
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023
 
 RUN dnf install -y --allowerasing \
-        cmake \
         ninja-build \
         git \
         gcc \
@@ -27,6 +26,7 @@ RUN dnf install -y --allowerasing \
 ENV PATH="/usr/local/bin:$PATH"
 
 RUN pip3 install --no-cache-dir \
+        cmake \
         "huggingface_hub[cli]>=0.21,<1.0" \
         numpy \
         sympy \
