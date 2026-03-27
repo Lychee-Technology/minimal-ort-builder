@@ -108,6 +108,8 @@ echo "==> Building ORT (this will take a while)"
 
 CMAKE_EXTRA_DEFINES=(
     "onnxruntime_BUILD_SHARED_LIB=ON"
+    "CMAKE_C_COMPILER_LAUNCHER=ccache"
+    "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
 )
 
 if [ "${CPU_TUNING}" = "neoverse-n1" ]; then
