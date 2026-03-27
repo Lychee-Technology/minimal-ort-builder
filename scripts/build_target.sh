@@ -119,9 +119,20 @@ CMAKE_EXTRA_DEFINES=(
 
 if [ "${CPU_TUNING}" = "neoverse-n1" ]; then
     CMAKE_EXTRA_DEFINES+=(
-        "CMAKE_CXX_FLAGS=-mcpu=neoverse-n1 -mno-sve"
-        "CMAKE_C_FLAGS=-mcpu=neoverse-n1 -mno-sve"
+        # Use -mtune (not -mcpu) so Clang tunes for neoverse-n1 without
+        # auto-enabling SVE. -mcpu=neoverse-n1 with Clang 20 defines
+        # __ARM_FEATURE_SVE which conflicts with ORT's SVE kernel gating.
+        "CMAKE_CXX_FLAGS=-mtune=neoverse-n1"
+        "CMAKE_C_FLAGS=-mtune=neoverse-n1"
     )
+fi
+
+ORT_NO_SVE_FLAG=()
+if [ "${CPU_TUNING}" = "neoverse-n1" ]; then
+    # Prevent ORT's build.py from setting -Donnxruntime_USE_SVE=ON,
+    # which would reference SVE kernel symbols that aren't compiled in a
+    # minimal build without the full SVE source list.
+    ORT_NO_SVE_FLAG=(--no_sve)
 fi
 
 python3 "${ORT_SRC}/tools/ci_build/build.py" \
@@ -135,6 +146,7 @@ python3 "${ORT_SRC}/tools/ci_build/build.py" \
     --enable_reduced_operator_type_support \
     --include_ops_by_config "${OPERATOR_CONFIG}" \
     --parallel \
+    "${ORT_NO_SVE_FLAG[@]}" \
     --cmake_extra_defines "${CMAKE_EXTRA_DEFINES[@]}"
 
 # ---------------------------------------------------------------------------
