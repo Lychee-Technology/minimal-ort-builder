@@ -28,29 +28,29 @@ A CI/CD pipeline that compiles a minimal, model-specific build of [ONNX Runtime]
 All build configuration lives in a single file: `builds/release.yaml`. Add or modify targets there; the CI pipeline reads nothing else.
 
 ```yaml
-release:
-  name: "v1.0.0"      # human-readable release name; used as the GitHub Release title
-  notes: ""           # optional release notes (may be empty string)
-
 onnxruntime:
-  version: "1.20.1"   # ORT release tag without the "v" prefix; applies to every target
+  version: "1.20.1"   # ORT release tag; applies to every target
 
 build:
   container_image: "public.ecr.aws/lambda/provided:al2023"  # base image for compilation
   target_os: linux
   target_arch: arm64
-  cpu_tuning: neoverse-n1   # passed as -mcpu=<value> to gcc/g++; omit tuning by using a generic value
+  cpu_tuning: neoverse-n1   # passed as -mcpu=<value> to gcc/g++
   execution_provider: cpu   # only "cpu" is supported in v1
   minimal_build: extended   # value passed to ORT's --minimal_build flag
+  bundle_extras:            # optional: extra files to include in the tarball (plain filenames only)
+    - build-info.json
 
 targets:
-  - id: phi3-mini-q4f16     # unique slug used in artifact names, e.g. ort-1.20.1-phi3-mini-q4f16-linux-arm64.tar.gz
+  - id: phi3-mini-q4f16     # unique slug; used in artifact names
+    quant: q4f16            # quantisation identifier; included in the tarball filename
     model:
       repo_id: microsoft/Phi-3-mini-4k-instruct-onnx   # Hugging Face repo in "owner/repo" format
       revision: main                                    # branch, tag, or full commit SHA
       primary: onnx/model_q4f16.onnx                   # path to the .onnx file inside the repo
       companions:
         - onnx/model_q4f16.onnx_data                   # external data files required alongside the model
+        - tokenizer.json
 ```
 
 To add a second target, append another entry under `targets` with a distinct `id`.
@@ -62,7 +62,7 @@ To add a second target, append another entry under `targets` with a distinct `id
 Some ONNX models store large weight tensors in separate external data files rather than embedding them inside the `.onnx` file itself. When that is the case, the runtime requires both files to be present in the same directory at inference time.
 
 - **`primary`** — the `.onnx` file. This is the file passed to ORT's operator-extraction tool and to the smoke test.
-- **`companions`** — a list of all external data files that must be present alongside `primary`. The build script downloads each companion and verifies it exists before starting the ORT compilation.
+- **`companions`** — a list of all external data files that must be present alongside `primary`. The build script downloads each companion and stages it at the root of the tarball by basename.
 
 For single-file models that embed all weights internally, set `companions` to an empty list:
 
@@ -80,12 +80,13 @@ The following rules are enforced by `scripts/validate_manifest.py`:
 
 | # | Rule |
 |---|------|
-| 1 | Top-level keys `release`, `onnxruntime`, `build`, and `targets` are all required |
-| 2 | `release` must contain `name` and `notes` |
-| 3 | `onnxruntime` must contain `version` |
-| 4 | `build` must contain `container_image`, `target_os`, `target_arch`, `cpu_tuning`, `execution_provider`, and `minimal_build` |
+| 1 | Top-level keys `onnxruntime`, `build`, and `targets` are all required |
+| 2 | `onnxruntime` must contain `version` |
+| 3 | `build` must contain `container_image`, `target_os`, `target_arch`, `cpu_tuning`, `execution_provider`, and `minimal_build` |
+| 4 | `build.bundle_extras`, if present, must be a list of plain filenames (no path separators, no leading dot) |
 | 5 | `targets` must be a non-empty list |
-| 6 | Each target must have `id` and `model` |
+| 6 | Each target must have `id`, `quant`, and `model` |
+| 6b | `quant` must match `^[a-z0-9][a-z0-9\-]*$` (e.g. `fp32`, `q4f16`, `int8`) |
 | 7 | Target `id` values must be unique across all targets |
 | 8 | Targets must not contain a per-target `onnxruntime` key (the global one is used) |
 | 9 | Each `model` must have `repo_id`, `revision`, `primary`, and `companions` |
@@ -131,10 +132,12 @@ docker run --rm \
   -v "$(pwd)/output:/output" \
   -e TARGET_ID=phi3-mini-q4f16 \
   -e ORT_VERSION=1.20.1 \
+  -e QUANT=q4f16 \
   -e HF_REPO_ID=microsoft/Phi-3-mini-4k-instruct-onnx \
   -e HF_REVISION=main \
   -e HF_PRIMARY=onnx/model_q4f16.onnx \
-  -e HF_COMPANIONS="onnx/model_q4f16.onnx_data" \
+  -e HF_COMPANIONS="onnx/model_q4f16.onnx_data tokenizer.json" \
+  -e BUNDLE_EXTRAS="build-info.json" \
   -e CPU_TUNING=neoverse-n1 \
   -e EXECUTION_PROVIDER=cpu \
   -e MINIMAL_BUILD=extended \
@@ -142,7 +145,7 @@ docker run --rm \
   ort-lambda-build /scripts/build_target.sh
 ```
 
-The output tarball is written to `output/ort-<ORT_VERSION>-<TARGET_ID>-linux-arm64.tar.gz`.
+The output tarball is written to `output/<TARGET_ID_SAFE>_<QUANT>_linux-arm64.tar.gz` (slashes in `TARGET_ID` are replaced with `__`).
 
 **Multiple companion files:** space-separate them in the `HF_COMPANIONS` value:
 
@@ -163,16 +166,22 @@ The build script reads `HF_TOKEN` automatically from the environment when callin
 
 ## Tarball contents
 
-Each target produces one `.tar.gz` with the following files:
+Each target produces one `.tar.gz` named `<target_id_safe>_<quant>_linux-arm64.tar.gz`. The bundle always contains:
 
 | File | Description |
 |---|---|
 | `libonnxruntime.so` | Minimal ORT shared library compiled for this target's model |
-| `operators.config` | Reduced operator config generated from the model and used at build time |
-| `build-info.json` | ORT version, model source (repo, revision, primary path), git SHA of ORT, and build settings |
-| `SHA256SUMS` | SHA-256 checksums of `libonnxruntime.so`, `operators.config`, `build-info.json`, and `smoke-test.log` |
-| `manifest.snapshot.yaml` | Copy of `builds/release.yaml` as it existed at build time |
-| `smoke-test.log` | Output of the C loader smoke test that verifies the `.so` loads and the model opens without error |
+| `model.ort` | The model converted to ORT format (required by a minimal build) |
+| `<companion basenames>` | External data files and any other companions listed in the manifest (e.g. `tokenizer.json`) |
+| `SHA256SUMS` | SHA-256 checksums of all bundle files |
+
+Additional files can be included via `build.bundle_extras` in the manifest. The default configuration adds:
+
+| File | Description |
+|---|---|
+| `build-info.json` | ORT version, model source (repo, revision, primary path), ORT git SHA, and build settings |
+
+Files generated during the build but not in the whitelist (e.g. `operators.config`, `smoke-test.log`, `manifest.snapshot.yaml`) are pruned before the tarball is created.
 
 ---
 
