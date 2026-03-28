@@ -248,6 +248,17 @@ cp "${BUILT_SO}" "${STAGE_DIR}/libonnxruntime.so"
 cp "${OPERATOR_CONFIG}" "${STAGE_DIR}/operators.config"
 cp "${ORT_MODEL_PATH}" "${STAGE_DIR}/model.ort"
 
+# Copy companion files (e.g. tokenizer.json) into the stage dir by basename.
+# The tarball is a flat bundle, so all files land at the root level.
+if [ -n "${HF_COMPANIONS}" ]; then
+    for companion in ${HF_COMPANIONS}; do
+        COMPANION_PATH="${MODEL_DIR}/${companion}"
+        COMPANION_BASENAME="$(basename "${companion}")"
+        echo "    Staging companion: ${COMPANION_BASENAME}"
+        cp "${COMPANION_PATH}" "${STAGE_DIR}/${COMPANION_BASENAME}"
+    done
+fi
+
 jq -n \
   --arg target_id          "${TARGET_ID}" \
   --arg ort_version        "${ORT_VERSION}" \
