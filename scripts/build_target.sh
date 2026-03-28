@@ -17,7 +17,7 @@ set -euo pipefail
 : "${BUNDLE_EXTRAS:=""}"         # optional, space-separated list of extra filenames to include
 CPU_TUNING="${CPU_TUNING:-neoverse-n1}"
 EXECUTION_PROVIDER="${EXECUTION_PROVIDER:-cpu}"
-MINIMAL_BUILD="${MINIMAL_BUILD:-extended}"
+MINIMAL_BUILD="${MINIMAL_BUILD:-extended}"  # "basic" breaks CPU EP runtime partitioning; "extended" is the minimum viable level
 OUTPUT_DIR="${OUTPUT_DIR:-/output}"
 
 echo "==> Configuration"

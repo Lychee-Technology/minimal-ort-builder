@@ -7,6 +7,11 @@ build:
   target_arch: arm64
   cpu_tuning: neoverse-n1
   execution_provider: cpu
+  # "extended" is the minimum viable level for a functional CPU-only build.
+  # "basic" breaks runtime partitioning (ORT silently drops subgraphs that
+  # contain ops not registered at compile time, producing wrong outputs or
+  # a segfault).  "extended" keeps the full kernel dispatch table so that
+  # the reduced-op build still selects kernels correctly at runtime.
   minimal_build: extended
   bundle_extras:
     - build-info.json
