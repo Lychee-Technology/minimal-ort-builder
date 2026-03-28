@@ -114,9 +114,17 @@ CMAKE_EXTRA_DEFINES=(
     "onnxruntime_BUILD_SHARED_LIB=ON"
     "CMAKE_C_COMPILER=clang"
     "CMAKE_CXX_COMPILER=clang++"
-    "CMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld"
-    "CMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld"
-    "CMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld"
+    # -O3: upgrades from CMake Release's default -O2; enables additional loop
+    # unrolling, auto-vectorization, and inter-procedural optimisations.
+    # -flto=thin: ThinLTO — lightweight whole-program analysis at link time
+    # (cross-TU inlining, dead-symbol stripping).  Requires matching flags on
+    # all three linker variables below.  lld (already required) has native
+    # ThinLTO support; no linker plugin needed.
+    "CMAKE_C_FLAGS=-O3 -flto=thin"
+    "CMAKE_CXX_FLAGS=-O3 -flto=thin"
+    "CMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -flto=thin"
+    "CMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -flto=thin"
+    "CMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -flto=thin"
     "CMAKE_C_COMPILER_LAUNCHER=ccache"
     "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
 )
@@ -161,8 +169,8 @@ if [ "${CPU_TUNING}" = "neoverse-n1" ]; then
         # Clang 20 auto-enables SVE for neoverse-n1 via -mcpu, defining
         # __ARM_FEATURE_SVE and causing linker errors against SVE symbols that
         # are absent in a minimal build.
-        "CMAKE_CXX_FLAGS=-march=armv8.2-a+dotprod+fp16+rcpc -mtune=neoverse-n1"
-        "CMAKE_C_FLAGS=-march=armv8.2-a+dotprod+fp16+rcpc -mtune=neoverse-n1"
+        "CMAKE_CXX_FLAGS=-O3 -flto=thin -march=armv8.2-a+dotprod+fp16+rcpc -mtune=neoverse-n1"
+        "CMAKE_C_FLAGS=-O3 -flto=thin -march=armv8.2-a+dotprod+fp16+rcpc -mtune=neoverse-n1"
     )
 fi
 
