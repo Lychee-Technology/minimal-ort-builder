@@ -21,7 +21,7 @@ targets:
       - tokenizer.json
       - build-info.json
     metadata:
-      model_format: onnx
+      model_format: ort
       pooling: lasttoken
       input_kind: text
       query_prefix: "Query: "
