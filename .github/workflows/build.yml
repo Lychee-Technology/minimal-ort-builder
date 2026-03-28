@@ -102,6 +102,7 @@ jobs:
           name: ${{ matrix.target.target_id_safe }}_${{ matrix.target.quant }}_linux-arm64
           path: output/*.tar.gz
           if-no-files-found: error
+          retention-days: 1
 
   publish:
     needs: build
