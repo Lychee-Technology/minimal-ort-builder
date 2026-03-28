@@ -14,6 +14,7 @@ set -euo pipefail
 : "${HF_REVISION:?HF_REVISION is required}"
 : "${HF_PRIMARY:?HF_PRIMARY is required}"
 : "${HF_COMPANIONS:=""}"         # optional, may be empty
+: "${BUNDLE_EXTRAS:=""}"         # optional, space-separated list of extra filenames to include
 CPU_TUNING="${CPU_TUNING:-neoverse-n1}"
 EXECUTION_PROVIDER="${EXECUTION_PROVIDER:-cpu}"
 MINIMAL_BUILD="${MINIMAL_BUILD:-extended}"
@@ -27,6 +28,7 @@ echo "    HF_REPO_ID         = ${HF_REPO_ID}"
 echo "    HF_REVISION        = ${HF_REVISION}"
 echo "    HF_PRIMARY         = ${HF_PRIMARY}"
 echo "    HF_COMPANIONS      = ${HF_COMPANIONS}"
+echo "    BUNDLE_EXTRAS      = ${BUNDLE_EXTRAS}"
 echo "    CPU_TUNING         = ${CPU_TUNING}"
 echo "    EXECUTION_PROVIDER = ${EXECUTION_PROVIDER}"
 echo "    MINIMAL_BUILD      = ${MINIMAL_BUILD}"
@@ -276,6 +278,41 @@ if [ -f "/manifest/release.yaml" ]; then
     echo "    Copying manifest snapshot"
     cp "/manifest/release.yaml" "${STAGE_DIR}/manifest.snapshot.yaml"
 fi
+
+# ---------------------------------------------------------------------------
+# 12b. Prune stage dir to the bundle whitelist
+#
+# Core files always kept: libonnxruntime.so, model.ort, companion basenames.
+# Extra files kept only if listed in BUNDLE_EXTRAS (space-separated).
+# Everything else (operators.config, manifest.snapshot.yaml, smoke-test.log,
+# and any other temp file that lands here) is removed.
+# ---------------------------------------------------------------------------
+echo "    Pruning bundle to whitelist"
+declare -A KEEP
+KEEP["libonnxruntime.so"]=1
+KEEP["model.ort"]=1
+
+# Companion basenames
+if [ -n "${HF_COMPANIONS}" ]; then
+    for companion in ${HF_COMPANIONS}; do
+        KEEP["$(basename "${companion}")"]=1
+    done
+fi
+
+# Explicit extras from manifest
+if [ -n "${BUNDLE_EXTRAS}" ]; then
+    for extra in ${BUNDLE_EXTRAS}; do
+        KEEP["${extra}"]=1
+    done
+fi
+
+for f in "${STAGE_DIR}"/*; do
+    fname="$(basename "${f}")"
+    if [ "${KEEP[$fname]+_}" != "_" ]; then
+        echo "      Removing from bundle: ${fname}"
+        rm -f "${f}"
+    fi
+done
 
 echo "    Computing SHA256SUMS"
 (cd "${STAGE_DIR}" && find . -type f ! -name SHA256SUMS | sort | xargs sha256sum > SHA256SUMS)

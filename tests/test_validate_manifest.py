@@ -521,24 +521,187 @@ def test_emit_matrix_includes_quant():
     assert len(matrix) == 1
     entry = matrix[0]
     assert entry["quant"] == "fp32"
+    assert entry["minimal_build"] == "extended"
 
 
-def test_emit_matrix_single_target():
-    """VALID fixture (companions: []) should produce a 1-entry matrix with correct fields."""
+# ---------------------------------------------------------------------------
+# bundle_extras field — validation tests
+# ---------------------------------------------------------------------------
+
+
+def test_bundle_extras_absent_is_valid():
+    """bundle_extras is optional — its absence must not cause a validation failure."""
+    # VALID_MANIFEST has no bundle_extras; it must still pass
+    result = _run(stdin_text=VALID_MANIFEST)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+
+
+def test_bundle_extras_valid_list_accepted():
+    """A bundle_extras list of plain filenames must be accepted."""
+    manifest = textwrap.dedent("""\
+        release:
+          name: test-release
+          notes: ""
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+          bundle_extras:
+            - build-info.json
+            - some-extra.txt
+        targets:
+          - id: model-a
+            quant: fp32
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+
+
+def test_bundle_extras_not_a_list_fails():
+    """bundle_extras: a-string (not a list) must be rejected."""
+    manifest = textwrap.dedent("""\
+        release:
+          name: test-release
+          notes: ""
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+          bundle_extras: not-a-list
+        targets:
+          - id: model-a
+            quant: fp32
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode != 0
+    assert "bundle_extras" in result.stderr.lower()
+
+
+def test_bundle_extras_with_path_separator_fails():
+    """bundle_extras entry containing '/' must be rejected (no subdirectory paths)."""
+    manifest = textwrap.dedent("""\
+        release:
+          name: test-release
+          notes: ""
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+          bundle_extras:
+            - subdir/bad-file.txt
+        targets:
+          - id: model-a
+            quant: fp32
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode != 0
+    assert "bundle_extras" in result.stderr.lower()
+
+
+def test_bundle_extras_with_leading_dot_fails():
+    """bundle_extras entry starting with '.' must be rejected."""
+    manifest = textwrap.dedent("""\
+        release:
+          name: test-release
+          notes: ""
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+          bundle_extras:
+            - .hidden-file
+        targets:
+          - id: model-a
+            quant: fp32
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode != 0
+    assert "bundle_extras" in result.stderr.lower()
+
+
+# ---------------------------------------------------------------------------
+# bundle_extras field — emit_matrix tests
+# ---------------------------------------------------------------------------
+
+
+def test_emit_matrix_bundle_extras_space_joined():
+    """bundle_extras list should be joined with spaces into a single string."""
+    manifest = textwrap.dedent("""\
+        release:
+          name: test-release
+          notes: ""
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+          bundle_extras:
+            - build-info.json
+            - extra.txt
+        targets:
+          - id: model-a
+            quant: fp32
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run_emitter(stdin_text=manifest)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    matrix = json.loads(result.stdout)
+    entry = matrix[0]
+    assert entry["bundle_extras"] == "build-info.json extra.txt"
+
+
+def test_emit_matrix_bundle_extras_absent_is_empty_string():
+    """When bundle_extras is absent, the emitted field should be an empty string."""
     result = _run_emitter(stdin_text=VALID_MANIFEST)
     assert result.returncode == 0, f"stderr: {result.stderr}"
     matrix = json.loads(result.stdout)
-    assert isinstance(matrix, list)
-    assert len(matrix) == 1
     entry = matrix[0]
-    assert entry["target_id"] == "model-a"
-    assert entry["ort_version"] == "1.20.1"
-    assert entry["hf_repo_id"] == "org/repo"
-    assert entry["hf_primary"] == "onnx/model.onnx"
-    assert entry["hf_companions"] == ""
-    assert entry["cpu_tuning"] == "neoverse-n1"
-    assert entry["container_image"] == "public.ecr.aws/lambda/provided:al2023"
-    assert entry["hf_revision"] == "main"
-    assert entry["execution_provider"] == "cpu"
-    assert entry["minimal_build"] == "extended"
-    assert entry["quant"] == "fp32"
+    assert entry["bundle_extras"] == ""

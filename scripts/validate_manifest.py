@@ -59,6 +59,21 @@ def validate(data: dict) -> None:
         "build",
     )
 
+    # Rule 4b: bundle_extras must be a list of plain filenames if present
+    bundle_extras = data["build"].get("bundle_extras")
+    if bundle_extras is not None:
+        if not isinstance(bundle_extras, list):
+            _fail("build.bundle_extras must be a list")
+        for item in bundle_extras:
+            if not isinstance(item, str):
+                _fail(
+                    f"build.bundle_extras: each entry must be a string, got {type(item).__name__}"
+                )
+            if "/" in item or "\\" in item or item.startswith("."):
+                _fail(
+                    f"build.bundle_extras: '{item}' must be a plain filename (no path separators or leading dot)"
+                )
+
     # Rule 5: targets must be a non-empty list
     targets = data["targets"]
     if not isinstance(targets, list) or len(targets) == 0:

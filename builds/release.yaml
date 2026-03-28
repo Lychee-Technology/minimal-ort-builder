@@ -12,6 +12,8 @@ build:
   cpu_tuning: neoverse-n1
   execution_provider: cpu
   minimal_build: extended
+  bundle_extras:
+    - build-info.json
 
 targets:
   - id: jinaai/jina-embeddings-v5-text-nano-retrieval

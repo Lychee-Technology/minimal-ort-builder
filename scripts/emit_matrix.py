@@ -18,6 +18,7 @@ import yaml
 def emit(data: dict) -> list[dict]:
     build = data["build"]
     ort_version = data["onnxruntime"]["version"]
+    bundle_extras = build.get("bundle_extras") or []
 
     entries = []
     for target in data["targets"]:
@@ -37,6 +38,7 @@ def emit(data: dict) -> list[dict]:
                 "hf_revision": model["revision"],
                 "hf_primary": model["primary"],
                 "hf_companions": " ".join(companions),
+                "bundle_extras": " ".join(bundle_extras),
             }
         )
     return entries
