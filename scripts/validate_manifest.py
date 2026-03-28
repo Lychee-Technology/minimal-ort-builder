@@ -37,10 +37,7 @@ def _is_safe_path(path) -> bool:
 
 def validate(data: dict) -> None:
     # Rule 1: required top-level keys
-    _require_keys(data, ["release", "onnxruntime", "build", "targets"], "top level")
-
-    # Rule 2: release sub-keys
-    _require_keys(data["release"], ["name", "notes"], "release")
+    _require_keys(data, ["onnxruntime", "build", "targets"], "top level")
 
     # Rule 3: onnxruntime sub-keys
     _require_keys(data["onnxruntime"], ["version"], "onnxruntime")

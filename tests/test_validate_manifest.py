@@ -10,9 +10,6 @@ SCRIPT = Path(__file__).parent.parent / "scripts" / "validate_manifest.py"
 EMIT_SCRIPT = Path(__file__).parent.parent / "scripts" / "emit_matrix.py"
 
 VALID_MANIFEST = textwrap.dedent("""\
-    release:
-      name: test-release
-      notes: ""
     onnxruntime:
       version: "1.20.1"
     build:
@@ -54,11 +51,14 @@ def test_valid_manifest_exits_zero():
     assert "OK" in result.stdout
 
 
+def test_manifest_without_release_is_valid():
+    """The 'release' section is not required and its absence must not cause failure."""
+    result = _run(stdin_text=VALID_MANIFEST)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+
+
 def test_duplicate_ids_fail():
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -91,9 +91,6 @@ def test_duplicate_ids_fail():
 
 def test_primary_in_companions_fails():
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -120,9 +117,6 @@ def test_primary_in_companions_fails():
 
 def test_absolute_path_fails():
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -148,9 +142,6 @@ def test_absolute_path_fails():
 
 def test_dotdot_path_fails():
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -175,9 +166,6 @@ def test_dotdot_path_fails():
 
 def test_missing_required_field_fails():
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -199,32 +187,6 @@ def test_missing_required_field_fails():
     assert "onnxruntime" in result.stderr.lower() or "missing" in result.stderr.lower()
 
 
-def test_missing_release_field_fails():
-    """Missing top-level 'release' key should also be caught and reported."""
-    manifest = textwrap.dedent("""\
-        onnxruntime:
-          version: "1.20.1"
-        build:
-          container_image: public.ecr.aws/lambda/provided:al2023
-          target_os: linux
-          target_arch: arm64
-          cpu_tuning: neoverse-n1
-          execution_provider: cpu
-          minimal_build: extended
-        targets:
-          - id: model-a
-            model:
-              repo_id: org/repo
-              revision: main
-              primary: onnx/model.onnx
-              companions: []
-    """)
-    result = _run(stdin_text=manifest)
-    assert result.returncode != 0
-    assert result.stderr
-    assert "release" in result.stderr.lower() or "missing" in result.stderr.lower()
-
-
 def test_file_path_argument():
     """Passing a real file path (not '-') should exit 0 and print OK."""
     release_yaml = Path(__file__).parent.parent / "builds" / "release.yaml"
@@ -236,9 +198,6 @@ def test_file_path_argument():
 def test_companions_not_a_list_fails():
     """companions: oops (a string) must be rejected, not silently mis-handled."""
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -266,9 +225,6 @@ def test_companions_not_a_list_fails():
 def test_primary_non_string_path_fails():
     """primary: 42 (an integer) must be rejected cleanly, not crash."""
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -316,9 +272,6 @@ def _run_emitter(stdin_text: str | None = None, file_arg: str | None = None):
 def test_emit_matrix_companions_space_joined():
     """companions list should be joined with spaces into a single string."""
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -349,9 +302,6 @@ def test_emit_matrix_companions_space_joined():
 def test_emit_matrix_multi_target():
     """A manifest with two targets produces a 2-entry list with correct target_ids."""
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -389,9 +339,6 @@ def test_emit_matrix_multi_target():
 def test_emit_matrix_companions_null():
     """companions: null (YAML scalar) should produce hf_companions == ""."""
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -425,9 +372,6 @@ def test_emit_matrix_companions_null():
 def test_missing_quant_fails():
     """Each target must have a 'quant' field — omitting it should be rejected."""
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -453,9 +397,6 @@ def test_missing_quant_fails():
 def test_invalid_quant_format_fails():
     """quant value with a space must be rejected (must match ^[a-z0-9][a-z0-9\\-]*$)."""
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -483,9 +424,6 @@ def test_valid_quant_formats_accepted():
     """quant values like 'fp32', 'q4f16', 'int8' must be accepted."""
     for quant in ("fp32", "q4f16", "int8", "q8-0"):
         manifest = textwrap.dedent(f"""\
-            release:
-              name: test-release
-              notes: ""
             onnxruntime:
               version: "1.20.1"
             build:
@@ -524,6 +462,27 @@ def test_emit_matrix_includes_quant():
     assert entry["minimal_build"] == "extended"
 
 
+def test_emit_matrix_single_target():
+    """VALID fixture (companions: []) should produce a 1-entry matrix with correct fields."""
+    result = _run_emitter(stdin_text=VALID_MANIFEST)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    matrix = json.loads(result.stdout)
+    assert isinstance(matrix, list)
+    assert len(matrix) == 1
+    entry = matrix[0]
+    assert entry["target_id"] == "model-a"
+    assert entry["ort_version"] == "1.20.1"
+    assert entry["hf_repo_id"] == "org/repo"
+    assert entry["hf_primary"] == "onnx/model.onnx"
+    assert entry["hf_companions"] == ""
+    assert entry["cpu_tuning"] == "neoverse-n1"
+    assert entry["container_image"] == "public.ecr.aws/lambda/provided:al2023"
+    assert entry["hf_revision"] == "main"
+    assert entry["execution_provider"] == "cpu"
+    assert entry["minimal_build"] == "extended"
+    assert entry["quant"] == "fp32"
+
+
 # ---------------------------------------------------------------------------
 # bundle_extras field — validation tests
 # ---------------------------------------------------------------------------
@@ -531,7 +490,6 @@ def test_emit_matrix_includes_quant():
 
 def test_bundle_extras_absent_is_valid():
     """bundle_extras is optional — its absence must not cause a validation failure."""
-    # VALID_MANIFEST has no bundle_extras; it must still pass
     result = _run(stdin_text=VALID_MANIFEST)
     assert result.returncode == 0, f"stderr: {result.stderr}"
 
@@ -539,9 +497,6 @@ def test_bundle_extras_absent_is_valid():
 def test_bundle_extras_valid_list_accepted():
     """A bundle_extras list of plain filenames must be accepted."""
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -570,9 +525,6 @@ def test_bundle_extras_valid_list_accepted():
 def test_bundle_extras_not_a_list_fails():
     """bundle_extras: a-string (not a list) must be rejected."""
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -600,9 +552,6 @@ def test_bundle_extras_not_a_list_fails():
 def test_bundle_extras_with_path_separator_fails():
     """bundle_extras entry containing '/' must be rejected (no subdirectory paths)."""
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -631,9 +580,6 @@ def test_bundle_extras_with_path_separator_fails():
 def test_bundle_extras_with_leading_dot_fails():
     """bundle_extras entry starting with '.' must be rejected."""
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
@@ -667,9 +613,6 @@ def test_bundle_extras_with_leading_dot_fails():
 def test_emit_matrix_bundle_extras_space_joined():
     """bundle_extras list should be joined with spaces into a single string."""
     manifest = textwrap.dedent("""\
-        release:
-          name: test-release
-          notes: ""
         onnxruntime:
           version: "1.20.1"
         build:
