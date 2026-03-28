@@ -196,7 +196,7 @@ int main(int argc, char *argv[]) {
     /* ------------------------------------------------------------------ */
     ORT_CHECK(api->Run(session, NULL,
                        (const char *const *)input_names,  input_tensors,  input_count,
-                       (const char *const *)output_names, output_tensors, output_count),
+                       (const char *const *)output_names, output_count,   output_tensors),
               "Run");
 
     fprintf(stdout, "SMOKE OK: inference succeeded (%zu input(s), %zu output(s))\n",
