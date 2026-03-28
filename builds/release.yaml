@@ -15,9 +15,11 @@ build:
 
 targets:
   - id: jinaai/jina-embeddings-v5-text-nano-retrieval
+    quant: q4f16
     model:
       repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
       revision: main
       primary: onnx/model_q4f16.onnx
       companions:
         - onnx/model_q4f16.onnx_data
+        - tokenizer.json

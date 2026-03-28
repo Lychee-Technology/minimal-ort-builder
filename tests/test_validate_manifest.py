@@ -24,6 +24,7 @@ VALID_MANIFEST = textwrap.dedent("""\
       minimal_build: extended
     targets:
       - id: model-a
+        quant: fp32
         model:
           repo_id: org/repo
           revision: main
@@ -69,12 +70,14 @@ def test_duplicate_ids_fail():
           minimal_build: extended
         targets:
           - id: model-a
+            quant: fp32
             model:
               repo_id: org/repo
               revision: main
               primary: onnx/model.onnx
               companions: []
           - id: model-a
+            quant: fp32
             model:
               repo_id: org/repo
               revision: main
@@ -102,6 +105,7 @@ def test_primary_in_companions_fails():
           minimal_build: extended
         targets:
           - id: model-a
+            quant: fp32
             model:
               repo_id: org/repo
               revision: main
@@ -130,6 +134,7 @@ def test_absolute_path_fails():
           minimal_build: extended
         targets:
           - id: model-a
+            quant: fp32
             model:
               repo_id: org/repo
               revision: main
@@ -157,6 +162,7 @@ def test_dotdot_path_fails():
           minimal_build: extended
         targets:
           - id: model-a
+            quant: fp32
             model:
               repo_id: org/repo
               revision: main
@@ -244,6 +250,7 @@ def test_companions_not_a_list_fails():
           minimal_build: extended
         targets:
           - id: model-a
+            quant: fp32
             model:
               repo_id: org/repo
               revision: main
@@ -273,6 +280,7 @@ def test_primary_non_string_path_fails():
           minimal_build: extended
         targets:
           - id: model-a
+            quant: fp32
             model:
               repo_id: org/repo
               revision: main
@@ -305,26 +313,6 @@ def _run_emitter(stdin_text: str | None = None, file_arg: str | None = None):
     )
 
 
-def test_emit_matrix_single_target():
-    """VALID fixture (companions: []) should produce a 1-entry matrix with correct fields."""
-    result = _run_emitter(stdin_text=VALID_MANIFEST)
-    assert result.returncode == 0, f"stderr: {result.stderr}"
-    matrix = json.loads(result.stdout)
-    assert isinstance(matrix, list)
-    assert len(matrix) == 1
-    entry = matrix[0]
-    assert entry["target_id"] == "model-a"
-    assert entry["ort_version"] == "1.20.1"
-    assert entry["hf_repo_id"] == "org/repo"
-    assert entry["hf_primary"] == "onnx/model.onnx"
-    assert entry["hf_companions"] == ""
-    assert entry["cpu_tuning"] == "neoverse-n1"
-    assert entry["container_image"] == "public.ecr.aws/lambda/provided:al2023"
-    assert entry["hf_revision"] == "main"
-    assert entry["execution_provider"] == "cpu"
-    assert entry["minimal_build"] == "extended"
-
-
 def test_emit_matrix_companions_space_joined():
     """companions list should be joined with spaces into a single string."""
     manifest = textwrap.dedent("""\
@@ -342,6 +330,7 @@ def test_emit_matrix_companions_space_joined():
           minimal_build: extended
         targets:
           - id: model-a
+            quant: fp32
             model:
               repo_id: org/repo
               revision: main
@@ -374,12 +363,14 @@ def test_emit_matrix_multi_target():
           minimal_build: extended
         targets:
           - id: model-a
+            quant: fp32
             model:
               repo_id: org/repo
               revision: main
               primary: onnx/model.onnx
               companions: []
           - id: model-b
+            quant: int8
             model:
               repo_id: org/repo2
               revision: v1
@@ -412,6 +403,7 @@ def test_emit_matrix_companions_null():
           minimal_build: extended
         targets:
           - id: model-a
+            quant: fp32
             model:
               repo_id: org/repo
               revision: main
@@ -423,3 +415,130 @@ def test_emit_matrix_companions_null():
     matrix = json.loads(result.stdout)
     entry = matrix[0]
     assert entry["hf_companions"] == ""
+
+
+# ---------------------------------------------------------------------------
+# quant field — validation tests (closes #12, #13)
+# ---------------------------------------------------------------------------
+
+
+def test_missing_quant_fails():
+    """Each target must have a 'quant' field — omitting it should be rejected."""
+    manifest = textwrap.dedent("""\
+        release:
+          name: test-release
+          notes: ""
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode != 0
+    assert "quant" in result.stderr.lower()
+
+
+def test_invalid_quant_format_fails():
+    """quant value with a space must be rejected (must match ^[a-z0-9][a-z0-9\\-]*$)."""
+    manifest = textwrap.dedent("""\
+        release:
+          name: test-release
+          notes: ""
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            quant: "bad quant"
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode != 0
+    assert "quant" in result.stderr.lower()
+
+
+def test_valid_quant_formats_accepted():
+    """quant values like 'fp32', 'q4f16', 'int8' must be accepted."""
+    for quant in ("fp32", "q4f16", "int8", "q8-0"):
+        manifest = textwrap.dedent(f"""\
+            release:
+              name: test-release
+              notes: ""
+            onnxruntime:
+              version: "1.20.1"
+            build:
+              container_image: public.ecr.aws/lambda/provided:al2023
+              target_os: linux
+              target_arch: arm64
+              cpu_tuning: neoverse-n1
+              execution_provider: cpu
+              minimal_build: extended
+            targets:
+              - id: model-a
+                quant: "{quant}"
+                model:
+                  repo_id: org/repo
+                  revision: main
+                  primary: onnx/model.onnx
+                  companions: []
+        """)
+        result = _run(stdin_text=manifest)
+        assert result.returncode == 0, f"quant={quant!r} rejected: {result.stderr}"
+
+
+# ---------------------------------------------------------------------------
+# quant field — emit_matrix tests
+# ---------------------------------------------------------------------------
+
+
+def test_emit_matrix_includes_quant():
+    """VALID_MANIFEST (now has quant: fp32) must produce entry with quant field."""
+    result = _run_emitter(stdin_text=VALID_MANIFEST)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    matrix = json.loads(result.stdout)
+    assert len(matrix) == 1
+    entry = matrix[0]
+    assert entry["quant"] == "fp32"
+
+
+def test_emit_matrix_single_target():
+    """VALID fixture (companions: []) should produce a 1-entry matrix with correct fields."""
+    result = _run_emitter(stdin_text=VALID_MANIFEST)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    matrix = json.loads(result.stdout)
+    assert isinstance(matrix, list)
+    assert len(matrix) == 1
+    entry = matrix[0]
+    assert entry["target_id"] == "model-a"
+    assert entry["ort_version"] == "1.20.1"
+    assert entry["hf_repo_id"] == "org/repo"
+    assert entry["hf_primary"] == "onnx/model.onnx"
+    assert entry["hf_companions"] == ""
+    assert entry["cpu_tuning"] == "neoverse-n1"
+    assert entry["container_image"] == "public.ecr.aws/lambda/provided:al2023"
+    assert entry["hf_revision"] == "main"
+    assert entry["execution_provider"] == "cpu"
+    assert entry["minimal_build"] == "extended"
+    assert entry["quant"] == "fp32"

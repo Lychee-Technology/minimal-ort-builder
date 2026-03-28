@@ -9,6 +9,7 @@ Exits 0 and prints 'OK: manifest is valid' on success.
 Exits non-zero and prints 'ERROR: <message>' to stderr on failure.
 """
 
+import re
 import sys
 import yaml
 
@@ -68,8 +69,16 @@ def validate(data: dict) -> None:
     for i, target in enumerate(targets):
         ctx = f"targets[{i}]"
 
-        # Rule 6: each target must have 'id' and 'model'
-        _require_keys(target, ["id", "model"], ctx)
+        # Rule 6: each target must have 'id', 'quant', and 'model'
+        _require_keys(target, ["id", "quant", "model"], ctx)
+
+        # Rule 6b: quant must match ^[a-z0-9][a-z0-9\-]*$
+        quant = target["quant"]
+        if not isinstance(quant, str) or not re.match(r"^[a-z0-9][a-z0-9\-]*$", quant):
+            _fail(
+                f"{ctx}: 'quant' must be a lowercase alphanumeric string "
+                f"(optionally with hyphens), got {quant!r}"
+            )
 
         # Rule 7: target ids must be unique
         tid = target["id"]

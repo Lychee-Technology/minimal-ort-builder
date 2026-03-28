@@ -9,6 +9,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 : "${TARGET_ID:?TARGET_ID is required}"
 : "${ORT_VERSION:?ORT_VERSION is required}"
+: "${QUANT:?QUANT is required}"
 : "${HF_REPO_ID:?HF_REPO_ID is required}"
 : "${HF_REVISION:?HF_REVISION is required}"
 : "${HF_PRIMARY:?HF_PRIMARY is required}"
@@ -21,6 +22,7 @@ OUTPUT_DIR="${OUTPUT_DIR:-/output}"
 echo "==> Configuration"
 echo "    TARGET_ID          = ${TARGET_ID}"
 echo "    ORT_VERSION        = ${ORT_VERSION}"
+echo "    QUANT              = ${QUANT}"
 echo "    HF_REPO_ID         = ${HF_REPO_ID}"
 echo "    HF_REVISION        = ${HF_REVISION}"
 echo "    HF_PRIMARY         = ${HF_PRIMARY}"
@@ -265,7 +267,7 @@ if [ -f "/manifest/release.yaml" ]; then
 fi
 
 echo "    Computing SHA256SUMS"
-(cd "${STAGE_DIR}" && sha256sum libonnxruntime.so operators.config model.ort build-info.json smoke-test.log > SHA256SUMS)
+(cd "${STAGE_DIR}" && find . -type f ! -name SHA256SUMS | sort | xargs sha256sum > SHA256SUMS)
 
 # ---------------------------------------------------------------------------
 # 13. Create tarball
@@ -274,7 +276,7 @@ echo "==> Creating tarball"
 # TARGET_ID may contain '/' (e.g. "jinaai/jina-embeddings-v5-text-nano-retrieval");
 # replace with '__' so the tarball is a flat file under OUTPUT_DIR.
 TARGET_ID_SAFE="${TARGET_ID//\//__}"
-TARBALL="${OUTPUT_DIR}/ort-${ORT_VERSION}-${TARGET_ID_SAFE}-linux-arm64.tar.gz"
+TARBALL="${OUTPUT_DIR}/${TARGET_ID_SAFE}_${QUANT}_linux-arm64.tar.gz"
 mkdir -p "${OUTPUT_DIR}"
 tar -czf "${TARBALL}" -C "${STAGE_DIR}" .
 

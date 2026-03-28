@@ -57,6 +57,7 @@ jobs:
         env:
           TARGET_ID: ${{ matrix.target.target_id }}
           ORT_VERSION: ${{ matrix.target.ort_version }}
+          QUANT: ${{ matrix.target.quant }}
           HF_REPO_ID: ${{ matrix.target.hf_repo_id }}
           HF_REVISION: ${{ matrix.target.hf_revision }}
           HF_PRIMARY: ${{ matrix.target.hf_primary }}
@@ -95,8 +96,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ort-${{ matrix.target.target_id_safe }}
-          path: output/ort-*.tar.gz
+          name: ${{ matrix.target.target_id_safe }}_${{ matrix.target.quant }}_linux-arm64
+          path: output/*.tar.gz
           if-no-files-found: error
 
   publish:
