@@ -495,7 +495,7 @@ def test_bundle_extras_absent_is_valid():
 
 
 def test_bundle_extras_valid_list_accepted():
-    """A bundle_extras list of plain filenames must be accepted."""
+    """A bundle_extras list of plain filenames at target level must be accepted."""
     manifest = textwrap.dedent("""\
         onnxruntime:
           version: "1.20.1"
@@ -506,12 +506,12 @@ def test_bundle_extras_valid_list_accepted():
           cpu_tuning: neoverse-n1
           execution_provider: cpu
           minimal_build: extended
-          bundle_extras:
-            - build-info.json
-            - some-extra.txt
         targets:
           - id: model-a
             quant: fp32
+            bundle_extras:
+              - build-info.json
+              - some-extra.txt
             model:
               repo_id: org/repo
               revision: main
@@ -523,7 +523,7 @@ def test_bundle_extras_valid_list_accepted():
 
 
 def test_bundle_extras_not_a_list_fails():
-    """bundle_extras: a-string (not a list) must be rejected."""
+    """bundle_extras: a-string (not a list) at target level must be rejected."""
     manifest = textwrap.dedent("""\
         onnxruntime:
           version: "1.20.1"
@@ -534,10 +534,10 @@ def test_bundle_extras_not_a_list_fails():
           cpu_tuning: neoverse-n1
           execution_provider: cpu
           minimal_build: extended
-          bundle_extras: not-a-list
         targets:
           - id: model-a
             quant: fp32
+            bundle_extras: not-a-list
             model:
               repo_id: org/repo
               revision: main
@@ -550,7 +550,7 @@ def test_bundle_extras_not_a_list_fails():
 
 
 def test_bundle_extras_with_path_separator_fails():
-    """bundle_extras entry containing '/' must be rejected (no subdirectory paths)."""
+    """bundle_extras entry at target level containing '/' must be rejected (no subdirectory paths)."""
     manifest = textwrap.dedent("""\
         onnxruntime:
           version: "1.20.1"
@@ -561,11 +561,11 @@ def test_bundle_extras_with_path_separator_fails():
           cpu_tuning: neoverse-n1
           execution_provider: cpu
           minimal_build: extended
-          bundle_extras:
-            - subdir/bad-file.txt
         targets:
           - id: model-a
             quant: fp32
+            bundle_extras:
+              - subdir/bad-file.txt
             model:
               repo_id: org/repo
               revision: main
@@ -578,7 +578,7 @@ def test_bundle_extras_with_path_separator_fails():
 
 
 def test_bundle_extras_with_leading_dot_fails():
-    """bundle_extras entry starting with '.' must be rejected."""
+    """bundle_extras entry at target level starting with '.' must be rejected."""
     manifest = textwrap.dedent("""\
         onnxruntime:
           version: "1.20.1"
@@ -589,11 +589,11 @@ def test_bundle_extras_with_leading_dot_fails():
           cpu_tuning: neoverse-n1
           execution_provider: cpu
           minimal_build: extended
-          bundle_extras:
-            - .hidden-file
         targets:
           - id: model-a
             quant: fp32
+            bundle_extras:
+              - .hidden-file
             model:
               repo_id: org/repo
               revision: main
@@ -611,7 +611,7 @@ def test_bundle_extras_with_leading_dot_fails():
 
 
 def test_emit_matrix_bundle_extras_space_joined():
-    """bundle_extras list should be joined with spaces into a single string."""
+    """bundle_extras list at target level should be joined with spaces into a single string."""
     manifest = textwrap.dedent("""\
         onnxruntime:
           version: "1.20.1"
@@ -622,12 +622,12 @@ def test_emit_matrix_bundle_extras_space_joined():
           cpu_tuning: neoverse-n1
           execution_provider: cpu
           minimal_build: extended
-          bundle_extras:
-            - build-info.json
-            - extra.txt
         targets:
           - id: model-a
             quant: fp32
+            bundle_extras:
+              - build-info.json
+              - extra.txt
             model:
               repo_id: org/repo
               revision: main
@@ -647,4 +647,161 @@ def test_emit_matrix_bundle_extras_absent_is_empty_string():
     assert result.returncode == 0, f"stderr: {result.stderr}"
     matrix = json.loads(result.stdout)
     entry = matrix[0]
+    assert entry["bundle_extras"] == ""
+
+
+# ---------------------------------------------------------------------------
+# bundle_extras per-target — new schema tests
+# ---------------------------------------------------------------------------
+
+
+def test_bundle_extras_at_build_level_rejected():
+    """bundle_extras under build: is now an unknown key and must be rejected."""
+    manifest = textwrap.dedent("""\
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+          bundle_extras:
+            - build-info.json
+        targets:
+          - id: model-a
+            quant: fp32
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode != 0
+    assert (
+        "bundle_extras" in result.stderr.lower() or "unknown" in result.stderr.lower()
+    )
+
+
+def test_bundle_extras_per_target_valid():
+    """bundle_extras at target level (plain filenames) must be accepted."""
+    manifest = textwrap.dedent("""\
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            quant: fp32
+            bundle_extras:
+              - tokenizer.json
+              - build-info.json
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+
+
+def test_bundle_extras_per_target_with_path_separator_fails():
+    """bundle_extras entry at target level containing '/' must be rejected."""
+    manifest = textwrap.dedent("""\
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            quant: fp32
+            bundle_extras:
+              - subdir/bad.txt
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode != 0
+    assert "bundle_extras" in result.stderr.lower()
+
+
+def test_bundle_extras_per_target_absent_is_valid():
+    """bundle_extras is optional at target level — its absence must not cause failure."""
+    result = _run(stdin_text=VALID_MANIFEST)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+
+
+def test_emit_matrix_bundle_extras_from_target():
+    """bundle_extras at target level must be space-joined and emitted."""
+    manifest = textwrap.dedent("""\
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            quant: fp32
+            bundle_extras:
+              - tokenizer.json
+              - build-info.json
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run_emitter(stdin_text=manifest)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    matrix = json.loads(result.stdout)
+    entry = matrix[0]
+    assert entry["bundle_extras"] == "tokenizer.json build-info.json"
+
+
+def test_emit_matrix_bundle_extras_not_from_build():
+    """bundle_extras under build: must NOT be emitted (it's now a per-target field)."""
+    manifest = textwrap.dedent("""\
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            quant: fp32
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run_emitter(stdin_text=manifest)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    matrix = json.loads(result.stdout)
+    entry = matrix[0]
+    # No build-level bundle_extras, no target-level bundle_extras → empty string
     assert entry["bundle_extras"] == ""

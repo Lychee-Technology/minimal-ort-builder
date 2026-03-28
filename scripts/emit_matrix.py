@@ -18,12 +18,12 @@ import yaml
 def emit(data: dict) -> list[dict]:
     build = data["build"]
     ort_version = data["onnxruntime"]["version"]
-    bundle_extras = build.get("bundle_extras") or []
 
     entries = []
     for target in data["targets"]:
         model = target["model"]
         companions = model.get("companions") or []
+        bundle_extras = target.get("bundle_extras") or []
         entries.append(
             {
                 "target_id": target["id"],

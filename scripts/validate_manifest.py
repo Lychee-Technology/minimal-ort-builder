@@ -56,20 +56,18 @@ def validate(data: dict) -> None:
         "build",
     )
 
-    # Rule 4b: bundle_extras must be a list of plain filenames if present
-    bundle_extras = data["build"].get("bundle_extras")
-    if bundle_extras is not None:
-        if not isinstance(bundle_extras, list):
-            _fail("build.bundle_extras must be a list")
-        for item in bundle_extras:
-            if not isinstance(item, str):
-                _fail(
-                    f"build.bundle_extras: each entry must be a string, got {type(item).__name__}"
-                )
-            if "/" in item or "\\" in item or item.startswith("."):
-                _fail(
-                    f"build.bundle_extras: '{item}' must be a plain filename (no path separators or leading dot)"
-                )
+    # Rule 4b: reject unknown keys under build:
+    _KNOWN_BUILD_KEYS = {
+        "container_image",
+        "target_os",
+        "target_arch",
+        "cpu_tuning",
+        "execution_provider",
+        "minimal_build",
+    }
+    for key in data["build"]:
+        if key not in _KNOWN_BUILD_KEYS:
+            _fail(f"build: unknown key '{key}' (bundle_extras has moved to targets)")
 
     # Rule 5: targets must be a non-empty list
     targets = data["targets"]
@@ -130,6 +128,23 @@ def validate(data: dict) -> None:
                     f"{ctx}.model: path '{path}' must be relative "
                     f"(no leading '/' and no '..' segments)"
                 )
+
+        # Rule 9c: bundle_extras is optional at target level; if present must be
+        # a list of plain filenames (no path separators, no leading dot)
+        bundle_extras = target.get("bundle_extras")
+        if bundle_extras is not None:
+            if not isinstance(bundle_extras, list):
+                _fail(f"{ctx}: bundle_extras must be a list")
+            for item in bundle_extras:
+                if not isinstance(item, str):
+                    _fail(
+                        f"{ctx}.bundle_extras: each entry must be a string, got {type(item).__name__}"
+                    )
+                if "/" in item or "\\" in item or item.startswith("."):
+                    _fail(
+                        f"{ctx}.bundle_extras: '{item}' must be a plain filename "
+                        f"(no path separators or leading dot)"
+                    )
 
 
 def main() -> None:

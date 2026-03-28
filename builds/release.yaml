@@ -13,12 +13,13 @@ build:
   # a segfault).  "extended" keeps the full kernel dispatch table so that
   # the reduced-op build still selects kernels correctly at runtime.
   minimal_build: extended
-  bundle_extras:
-    - build-info.json
 
 targets:
   - id: jinaai/jina-embeddings-v5-text-nano-retrieval
     quant: q4f16
+    bundle_extras:
+      - tokenizer.json
+      - build-info.json
     model:
       repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
       revision: main

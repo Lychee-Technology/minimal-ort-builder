@@ -282,9 +282,10 @@ fi
 # ---------------------------------------------------------------------------
 # 12b. Prune stage dir to the bundle whitelist
 #
-# Core files always kept: libonnxruntime.so, model.ort, non-.onnx_data companion basenames.
-# Extra files kept only if listed in BUNDLE_EXTRAS (space-separated).
-# .onnx_data companions are excluded: data is embedded in model.ort after conversion.
+# Core files always kept: libonnxruntime.so, model.ort.
+# All other files included only if listed in BUNDLE_EXTRAS (space-separated).
+# companions are download-only — they are NOT auto-included; list any runtime
+# companions (e.g. tokenizer.json) explicitly in bundle_extras in the manifest.
 # Everything else (operators.config, manifest.snapshot.yaml, smoke-test.log,
 # and any other temp file that lands here) is removed.
 # ---------------------------------------------------------------------------
@@ -293,18 +294,7 @@ declare -A KEEP
 KEEP["libonnxruntime.so"]=1
 KEEP["model.ort"]=1
 
-# Companion basenames — skip .onnx_data files: they are only needed for ONNX→ORT
-# conversion and are not required at Lambda runtime (the data is embedded in model.ort).
-if [ -n "${HF_COMPANIONS}" ]; then
-    for companion in ${HF_COMPANIONS}; do
-        basename_companion="$(basename "${companion}")"
-        if [[ "${basename_companion}" != *.onnx_data ]]; then
-            KEEP["${basename_companion}"]=1
-        fi
-    done
-fi
-
-# Explicit extras from manifest
+# Explicit extras from manifest (e.g. tokenizer.json, build-info.json)
 if [ -n "${BUNDLE_EXTRAS}" ]; then
     for extra in ${BUNDLE_EXTRAS}; do
         KEEP["${extra}"]=1
