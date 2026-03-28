@@ -282,8 +282,9 @@ fi
 # ---------------------------------------------------------------------------
 # 12b. Prune stage dir to the bundle whitelist
 #
-# Core files always kept: libonnxruntime.so, model.ort, companion basenames.
+# Core files always kept: libonnxruntime.so, model.ort, non-.onnx_data companion basenames.
 # Extra files kept only if listed in BUNDLE_EXTRAS (space-separated).
+# .onnx_data companions are excluded: data is embedded in model.ort after conversion.
 # Everything else (operators.config, manifest.snapshot.yaml, smoke-test.log,
 # and any other temp file that lands here) is removed.
 # ---------------------------------------------------------------------------
@@ -292,10 +293,14 @@ declare -A KEEP
 KEEP["libonnxruntime.so"]=1
 KEEP["model.ort"]=1
 
-# Companion basenames
+# Companion basenames — skip .onnx_data files: they are only needed for ONNX→ORT
+# conversion and are not required at Lambda runtime (the data is embedded in model.ort).
 if [ -n "${HF_COMPANIONS}" ]; then
     for companion in ${HF_COMPANIONS}; do
-        KEEP["$(basename "${companion}")"]=1
+        basename_companion="$(basename "${companion}")"
+        if [[ "${basename_companion}" != *.onnx_data ]]; then
+            KEEP["${basename_companion}"]=1
+        fi
     done
 fi
 
