@@ -22,8 +22,8 @@ targets:
       - build-info.json
     metadata:
       model_format: ort
-      pooling: lasttoken
-      input_kind: text
+      pooling: last_token
+      input_kind: retrieval
       query_prefix: "Query: "
       document_prefix: "Document: "
       raw_embedding_dimension: 768

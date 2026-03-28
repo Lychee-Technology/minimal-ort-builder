@@ -179,7 +179,7 @@ Additional files can be included via `build.bundle_extras` in the manifest. The 
 
 | File | Description |
 |---|---|
-| `build-info.json` | ORT version, model source (repo, revision, primary path), ORT git SHA, and build settings |
+| `build-info.json` | ORT version, model source, build settings, and stable runtime metadata such as task kind, pooling mode, prefixes, and embedding dimensions |
 
 Files generated during the build but not in the whitelist (e.g. `operators.config`, `smoke-test.log`, `manifest.snapshot.yaml`) are pruned before the tarball is created.
 

@@ -826,8 +826,8 @@ VALID_MANIFEST_WITH_METADATA = textwrap.dedent("""\
         quant: fp32
         metadata:
           model_format: onnx
-          pooling: lasttoken
-          input_kind: text
+          pooling: last_token
+          input_kind: retrieval
           query_prefix: "Query: "
           document_prefix: "Document: "
           raw_embedding_dimension: 768
@@ -870,8 +870,8 @@ def test_metadata_raw_embedding_dimension_must_be_int():
             quant: fp32
             metadata:
               model_format: onnx
-              pooling: lasttoken
-              input_kind: text
+              pooling: last_token
+              input_kind: retrieval
               query_prefix: "Query: "
               document_prefix: "Document: "
               raw_embedding_dimension: "768"
@@ -905,8 +905,8 @@ def test_metadata_max_length_must_be_positive():
             quant: fp32
             metadata:
               model_format: onnx
-              pooling: lasttoken
-              input_kind: text
+              pooling: last_token
+              input_kind: retrieval
               query_prefix: "Query: "
               document_prefix: "Document: "
               raw_embedding_dimension: 768
@@ -936,7 +936,8 @@ def test_emit_matrix_metadata_json_encoded():
     entry = matrix[0]
     assert "model_metadata" in entry
     meta = json.loads(entry["model_metadata"])
-    assert meta["pooling"] == "lasttoken"
+    assert meta["input_kind"] == "retrieval"
+    assert meta["pooling"] == "last_token"
     assert meta["raw_embedding_dimension"] == 768
     assert meta["query_prefix"] == "Query: "
     assert meta["max_length"] == 8192
