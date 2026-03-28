@@ -15,6 +15,7 @@ set -euo pipefail
 : "${HF_PRIMARY:?HF_PRIMARY is required}"
 : "${HF_COMPANIONS:=""}"         # optional, may be empty
 : "${BUNDLE_EXTRAS:=""}"         # optional, space-separated list of extra filenames to include
+: "${MODEL_METADATA:="{}"}"     # optional, JSON object of model metadata from manifest
 CPU_TUNING="${CPU_TUNING:-neoverse-n1}"
 EXECUTION_PROVIDER="${EXECUTION_PROVIDER:-cpu}"
 MINIMAL_BUILD="${MINIMAL_BUILD:-extended}"  # "basic" breaks CPU EP runtime partitioning; "extended" is the minimum viable level
@@ -29,6 +30,7 @@ echo "    HF_REVISION        = ${HF_REVISION}"
 echo "    HF_PRIMARY         = ${HF_PRIMARY}"
 echo "    HF_COMPANIONS      = ${HF_COMPANIONS}"
 echo "    BUNDLE_EXTRAS      = ${BUNDLE_EXTRAS}"
+echo "    MODEL_METADATA     = ${MODEL_METADATA}"
 echo "    CPU_TUNING         = ${CPU_TUNING}"
 echo "    EXECUTION_PROVIDER = ${EXECUTION_PROVIDER}"
 echo "    MINIMAL_BUILD      = ${MINIMAL_BUILD}"
@@ -279,7 +281,8 @@ jq -n \
   --arg cpu_tuning         "${CPU_TUNING}" \
   --arg execution_provider "${EXECUTION_PROVIDER}" \
   --arg minimal_build      "${MINIMAL_BUILD}" \
-  '{target_id:$target_id,ort_version:$ort_version,ort_git_sha:$ort_git_sha,hf_repo_id:$hf_repo_id,hf_revision:$hf_revision,hf_primary:$hf_primary,cpu_tuning:$cpu_tuning,execution_provider:$execution_provider,minimal_build:$minimal_build}' \
+  --argjson model_metadata "${MODEL_METADATA}" \
+  '{target_id:$target_id,ort_version:$ort_version,ort_git_sha:$ort_git_sha,hf_repo_id:$hf_repo_id,hf_revision:$hf_revision,hf_primary:$hf_primary,cpu_tuning:$cpu_tuning,execution_provider:$execution_provider,minimal_build:$minimal_build,model_metadata:$model_metadata}' \
   > "${STAGE_DIR}/build-info.json"
 
 if [ -f "/manifest/release.yaml" ]; then

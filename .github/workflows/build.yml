@@ -67,6 +67,7 @@ jobs:
           HF_PRIMARY: ${{ matrix.target.hf_primary }}
           HF_COMPANIONS: ${{ matrix.target.hf_companions }}
           BUNDLE_EXTRAS: ${{ matrix.target.bundle_extras }}
+          MODEL_METADATA: ${{ matrix.target.model_metadata }}
           CPU_TUNING: ${{ matrix.target.cpu_tuning }}
           EXECUTION_PROVIDER: ${{ matrix.target.execution_provider }}
           MINIMAL_BUILD: ${{ matrix.target.minimal_build }}
@@ -86,6 +87,7 @@ jobs:
             -e HF_PRIMARY \
             -e HF_COMPANIONS \
             -e BUNDLE_EXTRAS \
+            -e MODEL_METADATA \
             -e CPU_TUNING \
             -e EXECUTION_PROVIDER \
             -e MINIMAL_BUILD \

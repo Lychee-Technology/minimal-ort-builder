@@ -146,6 +146,41 @@ def validate(data: dict) -> None:
                         f"(no path separators or leading dot)"
                     )
 
+        # Rule 9d: metadata is optional at target level; if present validate types
+        metadata = target.get("metadata")
+        if metadata is not None:
+            if not isinstance(metadata, dict):
+                _fail(f"{ctx}: metadata must be a mapping")
+            _STR_META_KEYS = {
+                "model_format",
+                "pooling",
+                "input_kind",
+                "query_prefix",
+                "document_prefix",
+            }
+            _INT_META_KEYS = {
+                "raw_embedding_dimension",
+                "output_embedding_dimension",
+                "max_length",
+            }
+            for key in _STR_META_KEYS:
+                val = metadata.get(key)
+                if val is not None and not isinstance(val, str):
+                    _fail(
+                        f"{ctx}.metadata: '{key}' must be a string, got {type(val).__name__}"
+                    )
+            for key in _INT_META_KEYS:
+                val = metadata.get(key)
+                if val is not None:
+                    if not isinstance(val, int) or isinstance(val, bool):
+                        _fail(
+                            f"{ctx}.metadata: '{key}' must be an integer, got {type(val).__name__}"
+                        )
+                    if val <= 0:
+                        _fail(
+                            f"{ctx}.metadata: '{key}' must be a positive integer, got {val}"
+                        )
+
 
 def main() -> None:
     if len(sys.argv) != 2:

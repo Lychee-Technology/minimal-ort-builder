@@ -20,6 +20,15 @@ targets:
     bundle_extras:
       - tokenizer.json
       - build-info.json
+    metadata:
+      model_format: onnx
+      pooling: lasttoken
+      input_kind: text
+      query_prefix: "Query: "
+      document_prefix: "Document: "
+      raw_embedding_dimension: 768
+      output_embedding_dimension: 768
+      max_length: 8192
     model:
       repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
       revision: main

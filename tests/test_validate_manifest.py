@@ -805,3 +805,147 @@ def test_emit_matrix_bundle_extras_not_from_build():
     entry = matrix[0]
     # No build-level bundle_extras, no target-level bundle_extras → empty string
     assert entry["bundle_extras"] == ""
+
+
+# ---------------------------------------------------------------------------
+# metadata block — validation tests
+# ---------------------------------------------------------------------------
+
+VALID_MANIFEST_WITH_METADATA = textwrap.dedent("""\
+    onnxruntime:
+      version: "1.20.1"
+    build:
+      container_image: public.ecr.aws/lambda/provided:al2023
+      target_os: linux
+      target_arch: arm64
+      cpu_tuning: neoverse-n1
+      execution_provider: cpu
+      minimal_build: extended
+    targets:
+      - id: model-a
+        quant: fp32
+        metadata:
+          model_format: onnx
+          pooling: lasttoken
+          input_kind: text
+          query_prefix: "Query: "
+          document_prefix: "Document: "
+          raw_embedding_dimension: 768
+          output_embedding_dimension: 768
+          max_length: 8192
+        model:
+          repo_id: org/repo
+          revision: main
+          primary: onnx/model.onnx
+          companions: []
+""")
+
+
+def test_metadata_block_valid():
+    """A fully-populated metadata block must be accepted."""
+    result = _run(stdin_text=VALID_MANIFEST_WITH_METADATA)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+
+
+def test_metadata_block_absent_is_valid():
+    """metadata is optional — its absence must not cause failure."""
+    result = _run(stdin_text=VALID_MANIFEST)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+
+
+def test_metadata_raw_embedding_dimension_must_be_int():
+    """raw_embedding_dimension must be a positive integer."""
+    manifest = textwrap.dedent("""\
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            quant: fp32
+            metadata:
+              model_format: onnx
+              pooling: lasttoken
+              input_kind: text
+              query_prefix: "Query: "
+              document_prefix: "Document: "
+              raw_embedding_dimension: "768"
+              output_embedding_dimension: 768
+              max_length: 8192
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode != 0
+    assert "raw_embedding_dimension" in result.stderr.lower()
+
+
+def test_metadata_max_length_must_be_positive():
+    """max_length must be a positive integer."""
+    manifest = textwrap.dedent("""\
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            quant: fp32
+            metadata:
+              model_format: onnx
+              pooling: lasttoken
+              input_kind: text
+              query_prefix: "Query: "
+              document_prefix: "Document: "
+              raw_embedding_dimension: 768
+              output_embedding_dimension: 768
+              max_length: 0
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode != 0
+    assert "max_length" in result.stderr.lower()
+
+
+# ---------------------------------------------------------------------------
+# metadata block — emit_matrix tests
+# ---------------------------------------------------------------------------
+
+
+def test_emit_matrix_metadata_json_encoded():
+    """metadata block must be emitted as a JSON-encoded string under 'model_metadata'."""
+    result = _run_emitter(stdin_text=VALID_MANIFEST_WITH_METADATA)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    matrix = json.loads(result.stdout)
+    entry = matrix[0]
+    assert "model_metadata" in entry
+    meta = json.loads(entry["model_metadata"])
+    assert meta["pooling"] == "lasttoken"
+    assert meta["raw_embedding_dimension"] == 768
+    assert meta["query_prefix"] == "Query: "
+    assert meta["max_length"] == 8192
+
+
+def test_emit_matrix_metadata_absent_is_empty_json_object():
+    """When metadata is absent, model_metadata must be emitted as '{}'."""
+    result = _run_emitter(stdin_text=VALID_MANIFEST)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    matrix = json.loads(result.stdout)
+    entry = matrix[0]
+    assert entry["model_metadata"] == "{}"

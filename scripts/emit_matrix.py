@@ -24,6 +24,7 @@ def emit(data: dict) -> list[dict]:
         model = target["model"]
         companions = model.get("companions") or []
         bundle_extras = target.get("bundle_extras") or []
+        metadata = target.get("metadata") or {}
         entries.append(
             {
                 "target_id": target["id"],
@@ -39,6 +40,7 @@ def emit(data: dict) -> list[dict]:
                 "hf_primary": model["primary"],
                 "hf_companions": " ".join(companions),
                 "bundle_extras": " ".join(bundle_extras),
+                "model_metadata": json.dumps(metadata, sort_keys=True),
             }
         )
     return entries
