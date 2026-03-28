@@ -75,6 +75,7 @@ jobs:
             -v "$HOME/.cache/ccache:/root/.cache/ccache" \
             -e TARGET_ID \
             -e ORT_VERSION \
+            -e QUANT \
             -e HF_REPO_ID \
             -e HF_REVISION \
             -e HF_PRIMARY \
