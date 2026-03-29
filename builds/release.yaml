@@ -35,4 +35,5 @@ targets:
       revision: main
       primary: onnx/model.onnx
       companions:
+        - onnx/model.onnx_data
         - tokenizer.json

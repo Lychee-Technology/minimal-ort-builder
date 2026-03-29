@@ -46,6 +46,40 @@ def _find_batch_and_seq_dims(graph):
     return batch_param, seq_param
 
 
+def _step0_inline_external_data(input_path: Path, output_path: Path) -> None:
+    """Inline any external tensor data into a self-contained ONNX file.
+
+    ONNX models with large weights use external data files (e.g. model.onnx_data).
+    References survive file copies but point to a filename relative to the original
+    directory. Inlining makes every intermediate file self-contained so no pipeline
+    step needs to carry the external data file alongside it.
+    """
+    import onnx
+    from onnx import numpy_helper
+
+    model = onnx.load(str(input_path), load_external_data=False)
+    has_external = any(
+        t.data_location == onnx.TensorProto.EXTERNAL
+        for t in model.graph.initializer
+    )
+    if not has_external:
+        shutil.copy2(input_path, output_path)
+        print("    no external data; copied as-is")
+        return
+
+    # Load external tensor data into raw_data fields, then rebuild as inline tensors
+    onnx.load_external_data_for_model(model, str(input_path.parent))
+    inlined = 0
+    for i, init in enumerate(model.graph.initializer):
+        if init.data_location == onnx.TensorProto.EXTERNAL:
+            arr = numpy_helper.to_array(init, base_dir=str(input_path.parent))
+            inline_tensor = numpy_helper.from_array(arr, name=init.name)
+            model.graph.initializer[i].CopyFrom(inline_tensor)
+            inlined += 1
+    onnx.save(model, str(output_path))
+    print(f"    inlined {inlined} external tensor(s)")
+
+
 def _step1_transformer_opt(input_path: Path, output_path: Path, model_type: str) -> None:
     """Transformer graph optimization. Skips (with warning) on any failure."""
     try:
@@ -170,13 +204,17 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     w = args.work_dir
+    step0_out = w / "00_inline_input.onnx"
     step1_out = w / "01_transformer_opt.onnx"
     step2a_out = w / "02_fixed_shape.onnx"
     step2b_out = w / "03_shape_inferred.onnx"
     step3_out = w / "04_ort_optimized.onnx"
 
+    print("==> Step 0: inline external data")
+    _step0_inline_external_data(args.input, step0_out)
+
     print("==> Step 1: transformer optimization")
-    _step1_transformer_opt(args.input, step1_out, args.model_type)
+    _step1_transformer_opt(step0_out, step1_out, args.model_type)
 
     print("==> Step 2a: static shape specialization")
     _step2a_shape_specialization(step1_out, step2a_out, args.max_length)
