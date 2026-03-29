@@ -50,6 +50,7 @@ int main(int argc, char *argv[]) {
     OrtValue    **input_tensors = NULL;
     void        **input_bufs    = NULL;  /* zero-fill buffers; must outlive Run */
     OrtAllocator *allocator     = NULL;
+    int64_t       input_ids_seq_len = 1;
 
     size_t        output_count   = 0;
     char        **output_names   = NULL;
@@ -106,6 +107,41 @@ int main(int argc, char *argv[]) {
     }
 
     for (size_t i = 0; i < input_count; i++) {
+        char *name = NULL;
+        OrtTypeInfo *type_info = NULL;
+        const OrtTensorTypeAndShapeInfo *shape_info = NULL;
+        size_t ndim = 0;
+        int64_t *dims = NULL;
+
+        ORT_CHECK(api->SessionGetInputName(session, i, allocator, &name),
+                  "SessionGetInputName");
+        ORT_CHECK(api->SessionGetInputTypeInfo(session, i, &type_info),
+                  "SessionGetInputTypeInfo");
+        ORT_CHECK(api->CastTypeInfoToTensorInfo(type_info, &shape_info),
+                  "CastTypeInfoToTensorInfo");
+        ORT_CHECK(api->GetDimensionsCount(shape_info, &ndim),
+                  "GetDimensionsCount");
+
+        dims = calloc(ndim ? ndim : 1, sizeof(int64_t));
+        if (!dims) {
+            api->AllocatorFree(allocator, name);
+            api->ReleaseTypeInfo(type_info);
+            fprintf(stderr, "SMOKE FAIL: out of memory\n");
+            goto cleanup;
+        }
+
+        ORT_CHECK(api->GetDimensions(shape_info, dims, ndim),
+                  "GetDimensions");
+        if (strcmp(name, "input_ids") == 0 && ndim >= 2 && dims[1] > 0) {
+            input_ids_seq_len = dims[1];
+        }
+
+        free(dims);
+        api->AllocatorFree(allocator, name);
+        api->ReleaseTypeInfo(type_info);
+    }
+
+    for (size_t i = 0; i < input_count; i++) {
         /* Get input name (caller must free via allocator). */
         ORT_CHECK(api->SessionGetInputName(session, i, allocator,
                                            &input_names[i]),
@@ -138,10 +174,15 @@ int main(int argc, char *argv[]) {
                   "GetDimensions");
         api->ReleaseTypeInfo(type_info);
 
-        /* Replace dynamic dimensions (≤ 0) with 1. */
+        /* Replace dynamic dimensions (<= 0) with 1. Keep attention_mask's
+         * sequence length aligned with input_ids so the smoke input remains
+         * shape-compatible with fused attention kernels. */
         size_t total_elems = 1;
         for (size_t d = 0; d < ndim; d++) {
             if (dims[d] <= 0) dims[d] = 1;
+            if (strcmp(input_names[i], "attention_mask") == 0 && ndim >= 2 && d == 1) {
+                dims[1] = input_ids_seq_len;
+            }
             total_elems *= (size_t)dims[d];
         }
 

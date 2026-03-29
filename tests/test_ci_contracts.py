@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 BUILD_SCRIPT = ROOT / "scripts" / "build_target.sh"
 WORKFLOW = ROOT / ".github" / "workflows" / "build.yml"
+SMOKE_TEST = ROOT / "scripts" / "smoke_test.c"
 
 
 def test_build_script_uses_fixed_ort_conversion() -> None:
@@ -43,3 +44,15 @@ def test_workflow_cache_key_tracks_build_inputs() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     expected = "hashFiles('builds/release.yaml', 'scripts/build_target.sh', 'scripts/optimize_model.py', 'docker/lambda-build.Dockerfile')"
     assert expected in text
+
+
+def test_smoke_test_aligns_attention_mask_with_input_ids_sequence_length() -> None:
+    """Smoke inputs must keep attention_mask sequence length aligned with input_ids."""
+    text = SMOKE_TEST.read_text(encoding="utf-8")
+    assert "input_ids_seq_len" in text
+    assert (
+        'strcmp(name, "input_ids") == 0' in text
+        or 'strcmp(input_names[i], "input_ids") == 0' in text
+    )
+    assert 'strcmp(input_names[i], "attention_mask") == 0' in text
+    assert "dims[1] = input_ids_seq_len" in text
