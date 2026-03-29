@@ -2,7 +2,6 @@
 
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 
 SCRIPT = Path(__file__).parent.parent / "scripts" / "optimize_model.py"
