@@ -140,7 +140,7 @@ python3 "${ORT_SRC}/tools/python/create_reduced_build_config.py" \
 # step 11 when convert_onnx_models_to_ort.py --optimization_style Fixed fuses
 # MatMulInteger + DequantizeLinear into a single kernel.  The minimal build
 # must include it explicitly.
-echo "MatMulIntegerToFloat;1" >> "${OPERATOR_CONFIG}"
+echo "com.microsoft;1;MatMulIntegerToFloat" >> "${OPERATOR_CONFIG}"
 
 # ---------------------------------------------------------------------------
 # 9. Build ORT
