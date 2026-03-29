@@ -20,10 +20,13 @@ jobs:
           python-version: "3.12"
 
       - name: Install tooling deps
-        run: pip install pyyaml
+        run: pip install pyyaml pytest
 
       - name: Validate manifest
         run: python scripts/validate_manifest.py builds/release.yaml
+
+      - name: Run regression tests
+        run: pytest tests/test_validate_manifest.py tests/test_optimize_model.py tests/test_ci_contracts.py -q
 
       - name: Emit matrix
         id: emit
@@ -51,7 +54,7 @@ jobs:
           # the build (manifest + build script). github.sha is intentionally
           # NOT used: ORT is a pinned third-party library, so the cache is
           # valid across commits as long as these inputs haven't changed.
-          key: ccache-arm64-ort-${{ matrix.target.ort_version }}-${{ matrix.target.target_id }}-${{ hashFiles('builds/release.yaml', 'scripts/build_target.sh') }}
+          key: ccache-arm64-ort-${{ matrix.target.ort_version }}-${{ matrix.target.target_id }}-${{ hashFiles('builds/release.yaml', 'scripts/build_target.sh', 'scripts/optimize_model.py', 'docker/lambda-build.Dockerfile') }}
           restore-keys: |
             ccache-arm64-ort-${{ matrix.target.ort_version }}-${{ matrix.target.target_id }}-
             ccache-arm64-ort-${{ matrix.target.ort_version }}-
@@ -108,7 +111,7 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CURRENT_KEY: ccache-arm64-ort-${{ matrix.target.ort_version }}-${{ matrix.target.target_id }}-${{ hashFiles('builds/release.yaml', 'scripts/build_target.sh') }}
+          CURRENT_KEY: ccache-arm64-ort-${{ matrix.target.ort_version }}-${{ matrix.target.target_id }}-${{ hashFiles('builds/release.yaml', 'scripts/build_target.sh', 'scripts/optimize_model.py', 'docker/lambda-build.Dockerfile') }}
         run: |
           gh cache list \
             --repo ${{ github.repository }} \

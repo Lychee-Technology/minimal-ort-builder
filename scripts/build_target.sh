@@ -98,6 +98,15 @@ echo "==> Cloning ORT ${ORT_VERSION}"
 git clone --depth 1 --branch "${ORT_VERSION}" \
     https://github.com/microsoft/onnxruntime.git "${ORT_SRC}"
 
+# Patch: cap graph optimization at BASIC in the ORT conversion utility.
+# The converter applies ORT_ENABLE_ALL by default, which fuses attention into
+# MultiHeadAttention — incompatible with jina-style broadcast attention_bias
+# [1,heads,1,seq_len].  BASIC limits the converter to constant folding and
+# dead-node elimination only.  The model is already fully optimized by
+# optimize_model.py; the converter only needs to serialize to .ort format.
+sed -i 's/return ort.GraphOptimizationLevel.ORT_ENABLE_ALL/return ort.GraphOptimizationLevel.ORT_ENABLE_BASIC/' \
+    "${ORT_SRC}/tools/python/util/onnx_model_utils.py"
+
 # ---------------------------------------------------------------------------
 # 7. Optimize and quantize ONNX model
 # ---------------------------------------------------------------------------
@@ -127,51 +136,41 @@ mkdir -p "${ORT_INPUT_DIR}"
 cp "${OPTIMIZED_ONNX}" "${ORT_INPUT_DIR}/model.onnx"
 
 # ---------------------------------------------------------------------------
-# 8. Pre-convert ONNX → ORT format (using the installed onnxruntime Python
-#    package, which is a full ORT runtime).  This runs BEFORE the build so
-#    that create_reduced_build_config.py can scan the .ort file and capture
-#    every op — including any ORT-internal fused kernels — that will be needed
-#    at inference time.
+# 8. Convert ONNX → ORT format (using the installed onnxruntime Python
+#    package).  Runs BEFORE the build so the operator config (step 9) is
+#    derived from the same model the smoke test will load.
 #
-#    --optimization_style Runtime: optimizations are applied at inference time
-#    by whatever graph transformers are compiled into the minimal build.
-#    This avoids Fixed-style attention fusion (MultiHeadAttention), which is
-#    incompatible with jina-style broadcast attention_bias [1,heads,1,seq_len].
-#    In the minimal build, only graph transformers whose output ops are
-#    compiled in will run; the attention fusion transformer is absent because
-#    MultiHeadAttention is not in the operator config.
+#    --optimization_style Fixed: graph optimization is applied once at
+#    conversion time and frozen into the .ort file.  The patched
+#    get_optimization_level() (see step 6 above) caps the level at BASIC,
+#    so only constant folding and dead-node elimination run — no attention
+#    fusion that would introduce MultiHeadAttention.
 # ---------------------------------------------------------------------------
-echo "==> Pre-converting ONNX to ORT format (using installed onnxruntime)"
+echo "==> Converting ONNX to ORT format (using installed onnxruntime)"
 ORT_MODEL_DIR="${WORK_DIR}/ort_model"
 mkdir -p "${ORT_MODEL_DIR}"
 python3 "${ORT_SRC}/tools/python/convert_onnx_models_to_ort.py" \
     "${ORT_INPUT_DIR}" \
-    --optimization_style Runtime \
+    --optimization_style Fixed \
     --target_platform "${ORT_TARGET_PLATFORM}" \
     --output_dir "${ORT_MODEL_DIR}"
 
-# Runtime style creates two files: model.ort (clean, for Runtime loading)
-# and model.with_runtime_opt.ort (optimization pre-applied).  We want the
-# clean one — ORT_DISABLE_ALL in the smoke test prevents runtime re-optimization
-# that would introduce incompatible MultiHeadAttention fusion.
-ORT_MODEL_PATH=$(find "${ORT_MODEL_DIR}" -name "*.ort" ! -name "*with_runtime_opt*" | head -1)
-if [ -z "${ORT_MODEL_PATH}" ]; then
-    echo "ERROR: no .ort model found after pre-conversion in ${ORT_MODEL_DIR}" >&2
+EXPECTED_ORT_MODEL="${ORT_MODEL_DIR}/model.ort"
+if [ ! -f "${EXPECTED_ORT_MODEL}" ]; then
+    echo "ERROR: expected ORT model missing at ${EXPECTED_ORT_MODEL}" >&2
+    echo "ERROR: ORT output directory contents:" >&2
+    find "${ORT_MODEL_DIR}" -maxdepth 2 -type f | sort >&2
     exit 1
 fi
+ORT_MODEL_PATH="${EXPECTED_ORT_MODEL}"
 echo "    ORT model: ${ORT_MODEL_PATH}"
 
 # ---------------------------------------------------------------------------
 # 9. Generate reduced operator config (from the optimized ONNX model)
 #
-# create_reduced_build_config.py expects .onnx (protobuf) format; the .ort
-# file above is flatbuffers and cannot be parsed by it.  Because we use
-# --optimization_style Runtime for the .ort conversion, the .ort file
-# contains exactly the same ops as the .onnx file — no Fixed-style fused
-# kernels are introduced.  At inference time, the minimal build's runtime
-# graph transformers may attempt fusions, but any fusion whose output
-# kernel is absent from this config is automatically skipped (ORT preserves
-# the original nodes instead).
+# create_reduced_build_config.py expects .onnx (protobuf) format.  The
+# Fixed-style .ort conversion above uses only BASIC optimization (see sed
+# patch in step 6), so the .ort file has the same op set as the .onnx file.
 # ---------------------------------------------------------------------------
 echo "==> Generating reduced operator config"
 OPERATOR_CONFIG="${WORK_DIR}/operators.config"
