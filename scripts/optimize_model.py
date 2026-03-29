@@ -5,10 +5,10 @@ Runs inside the lambda-build Docker container, between model download (step 3-5)
 and operator config generation (step 8). The output feeds all downstream steps.
 
 Pipeline steps:
-  1. Transformer optimization   (onnxruntime.transformers — fallback: skip)
+  1. Transformer optimization   (onnxruntime.transformers, attention fusion disabled — fallback: skip)
   2a. Static shape specialization  (batch=1, seq_len=max_length — hard fail)
   2b. Symbolic shape inference   (fallback: skip)
-  3. ORT graph optimization      (offline ORT_ENABLE_ALL — hard fail)
+  3. ORT graph optimization      (offline ORT_ENABLE_BASIC — hard fail)
   4. Dynamic int8 quantization   (weight_type=QInt8 — hard fail)
 """
 
@@ -81,12 +81,24 @@ def _step0_inline_external_data(input_path: Path, output_path: Path) -> None:
 
 
 def _step1_transformer_opt(input_path: Path, output_path: Path, model_type: str) -> None:
-    """Transformer graph optimization. Skips (with warning) on any failure."""
+    """Transformer graph optimization. Skips (with warning) on any failure.
+
+    Attention fusion is disabled because models like jina-embeddings-v5 use a
+    broadcast attention bias of shape [1, heads, 1, seq_len] (ALiBi-style),
+    while ORT's MultiHeadAttention kernel requires [1, heads, seq_len, seq_len].
+    Fusing produces a graph that is structurally valid but fails at inference.
+    """
     try:
         from onnxruntime.transformers import optimizer
-        opt_model = optimizer.optimize_model(str(input_path), model_type=model_type)
+        from onnxruntime.transformers.fusion_options import FusionOptions
+
+        options = FusionOptions(model_type)
+        options.enable_attention = False
+        opt_model = optimizer.optimize_model(
+            str(input_path), model_type=model_type, optimization_options=options
+        )
         opt_model.save_model_to_file(str(output_path))
-        print(f"    transformer opt: OK ({model_type})")
+        print(f"    transformer opt: OK ({model_type}, attention fusion disabled)")
     except Exception as exc:
         print(
             f"    WARNING: transformer opt failed ({exc}); skipping step",
@@ -142,18 +154,25 @@ def _step2b_shape_inference(input_path: Path, output_path: Path) -> None:
 
 
 def _step3_ort_graph_opt(input_path: Path, output_path: Path) -> None:
-    """Offline ORT graph optimization at ORT_ENABLE_ALL level. Hard fails."""
+    """Offline ORT graph optimization at ORT_ENABLE_BASIC level. Hard fails.
+
+    ORT_ENABLE_BASIC covers constant folding, dead-node elimination, and
+    redundant-cast removal without applying transformer-specific attention
+    fusions, which avoids the MultiHeadAttention/broadcast-bias incompatibility.
+    The Fixed-style or Runtime-style ORT format conversion in build_target.sh
+    is responsible for any further graph-level optimizations.
+    """
     import onnxruntime as ort
 
     opts = ort.SessionOptions()
-    opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
     opts.optimized_model_filepath = str(output_path)
     ort.InferenceSession(
         str(input_path),
         sess_options=opts,
         providers=["CPUExecutionProvider"],
     )
-    print("    ORT graph opt: OK")
+    print("    ORT graph opt (basic): OK")
 
 
 def _step4_int8_quantize(input_path: Path, output_path: Path) -> None:

@@ -127,23 +127,47 @@ mkdir -p "${ORT_INPUT_DIR}"
 cp "${OPTIMIZED_ONNX}" "${ORT_INPUT_DIR}/model.onnx"
 
 # ---------------------------------------------------------------------------
-# 8. Generate reduced operator config
+# 8. Pre-convert ONNX → ORT format (using the installed onnxruntime Python
+#    package, which is a full ORT runtime).  This runs BEFORE the build so
+#    that create_reduced_build_config.py can scan the .ort file and capture
+#    every op — including any ORT-internal fused kernels — that will be needed
+#    at inference time.
+#
+#    --optimization_style Runtime: optimizations are applied at inference time
+#    by whatever graph transformers are compiled into the minimal build.
+#    This avoids Fixed-style attention fusion (MultiHeadAttention), which is
+#    incompatible with jina-style broadcast attention_bias [1,heads,1,seq_len].
+#    In the minimal build, only graph transformers whose output ops are
+#    compiled in will run; the attention fusion transformer is absent because
+#    MultiHeadAttention is not in the operator config.
+# ---------------------------------------------------------------------------
+echo "==> Pre-converting ONNX to ORT format (using installed onnxruntime)"
+ORT_MODEL_DIR="${WORK_DIR}/ort_model"
+mkdir -p "${ORT_MODEL_DIR}"
+python3 "${ORT_SRC}/tools/python/convert_onnx_models_to_ort.py" \
+    "${ORT_INPUT_DIR}" \
+    --optimization_style Runtime \
+    --target_platform "${ORT_TARGET_PLATFORM}" \
+    --output_dir "${ORT_MODEL_DIR}"
+
+ORT_MODEL_PATH=$(find "${ORT_MODEL_DIR}" -name "*.ort" | head -1)
+if [ -z "${ORT_MODEL_PATH}" ]; then
+    echo "ERROR: no .ort model found after pre-conversion in ${ORT_MODEL_DIR}" >&2
+    exit 1
+fi
+echo "    ORT model: ${ORT_MODEL_PATH}"
+
+# ---------------------------------------------------------------------------
+# 9. Generate reduced operator config (from the .ort file, not the .onnx)
 # ---------------------------------------------------------------------------
 echo "==> Generating reduced operator config"
 OPERATOR_CONFIG="${WORK_DIR}/operators.config"
 python3 "${ORT_SRC}/tools/python/create_reduced_build_config.py" \
-    "${OPTIMIZED_ONNX}" \
+    "${ORT_MODEL_PATH}" \
     "${OPERATOR_CONFIG}"
 
-# MatMulIntegerToFloat is an ORT-internal fused kernel (com.microsoft domain).
-# It is not present in the ONNX model scanned above; it gets introduced at
-# step 11 when convert_onnx_models_to_ort.py --optimization_style Fixed fuses
-# MatMulInteger + DequantizeLinear into a single kernel.  The minimal build
-# must include it explicitly.
-echo "com.microsoft;1;MatMulIntegerToFloat,DynamicQuantizeMatMul" >> "${OPERATOR_CONFIG}"
-
 # ---------------------------------------------------------------------------
-# 9. Build ORT
+# 10. Build ORT
 # ---------------------------------------------------------------------------
 echo "==> Building ORT (this will take a while)"
 
@@ -234,7 +258,7 @@ python3 "${ORT_SRC}/tools/ci_build/build.py" \
     --cmake_extra_defines "${CMAKE_EXTRA_DEFINES[@]}"
 
 # ---------------------------------------------------------------------------
-# 10. Verify libonnxruntime.so exists
+# 11. Verify libonnxruntime.so exists
 # ---------------------------------------------------------------------------
 echo "==> Verifying build output"
 BUILT_SO="${BUILD_DIR}/Release/libonnxruntime.so"
@@ -242,26 +266,6 @@ if [ ! -f "${BUILT_SO}" ]; then
     echo "ERROR: libonnxruntime.so not found at ${BUILT_SO}" >&2
     exit 1
 fi
-
-# ---------------------------------------------------------------------------
-# 11. Convert ONNX model to ORT format (minimal build requires ORT format)
-# ---------------------------------------------------------------------------
-echo "==> Converting ONNX model to ORT format"
-ORT_MODEL_DIR="${WORK_DIR}/ort_model"
-mkdir -p "${ORT_MODEL_DIR}"
-python3 "${ORT_SRC}/tools/python/convert_onnx_models_to_ort.py" \
-    "${ORT_INPUT_DIR}" \
-    --optimization_style Fixed \
-    --target_platform "${ORT_TARGET_PLATFORM}" \
-    --output_dir "${ORT_MODEL_DIR}"
-
-# The converter mirrors the directory structure; find the .ort file
-ORT_MODEL_PATH=$(find "${ORT_MODEL_DIR}" -name "*.ort" | head -1)
-if [ -z "${ORT_MODEL_PATH}" ]; then
-    echo "ERROR: no .ort model found after conversion in ${ORT_MODEL_DIR}" >&2
-    exit 1
-fi
-echo "    ORT model: ${ORT_MODEL_PATH}"
 
 # ---------------------------------------------------------------------------
 # 12. Compile and run smoke test
