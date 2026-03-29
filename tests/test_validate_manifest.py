@@ -950,3 +950,60 @@ def test_emit_matrix_metadata_absent_is_empty_json_object():
     matrix = json.loads(result.stdout)
     entry = matrix[0]
     assert entry["model_metadata"] == "{}"
+
+
+def test_metadata_model_type_string_accepted():
+    """model_type: bert must be accepted as a string metadata field."""
+    manifest = textwrap.dedent("""\
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            quant: int8
+            metadata:
+              model_type: bert
+              max_length: 8192
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+
+
+def test_metadata_model_type_non_string_rejected():
+    """model_type: 42 (integer) must be rejected."""
+    manifest = textwrap.dedent("""\
+        onnxruntime:
+          version: "1.20.1"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            quant: int8
+            metadata:
+              model_type: 42
+              max_length: 8192
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode != 0
+    assert "model_type" in result.stderr.lower()

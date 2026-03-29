@@ -153,6 +153,7 @@ def validate(data: dict) -> None:
                 _fail(f"{ctx}: metadata must be a mapping")
             _STR_META_KEYS = {
                 "model_format",
+                "model_type",
                 "pooling",
                 "input_kind",
                 "query_prefix",
