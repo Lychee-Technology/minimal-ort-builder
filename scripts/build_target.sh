@@ -158,12 +158,21 @@ fi
 echo "    ORT model: ${ORT_MODEL_PATH}"
 
 # ---------------------------------------------------------------------------
-# 9. Generate reduced operator config (from the .ort file, not the .onnx)
+# 9. Generate reduced operator config (from the optimized ONNX model)
+#
+# create_reduced_build_config.py expects .onnx (protobuf) format; the .ort
+# file above is flatbuffers and cannot be parsed by it.  Because we use
+# --optimization_style Runtime for the .ort conversion, the .ort file
+# contains exactly the same ops as the .onnx file — no Fixed-style fused
+# kernels are introduced.  At inference time, the minimal build's runtime
+# graph transformers may attempt fusions, but any fusion whose output
+# kernel is absent from this config is automatically skipped (ORT preserves
+# the original nodes instead).
 # ---------------------------------------------------------------------------
 echo "==> Generating reduced operator config"
 OPERATOR_CONFIG="${WORK_DIR}/operators.config"
 python3 "${ORT_SRC}/tools/python/create_reduced_build_config.py" \
-    "${ORT_MODEL_PATH}" \
+    "${OPTIMIZED_ONNX}" \
     "${OPERATOR_CONFIG}"
 
 # ---------------------------------------------------------------------------
