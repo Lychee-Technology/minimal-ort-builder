@@ -1,5 +1,6 @@
 """Tests for scripts/optimize_model.py — CLI argument validation."""
 
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,14 @@ def _run(*extra_args):
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
+def _load_module():
+    spec = importlib.util.spec_from_file_location("optimize_model", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_missing_required_args_exits_nonzero():
     """Running with no args must exit non-zero (argparse error)."""
     result = _run()
@@ -21,12 +30,18 @@ def test_missing_required_args_exits_nonzero():
 def test_missing_input_file_exits_nonzero(tmp_path):
     """--input pointing at a nonexistent file must exit non-zero with a clear error."""
     result = _run(
-        "--input", str(tmp_path / "nonexistent.onnx"),
-        "--output", str(tmp_path / "out.onnx"),
-        "--model_type", "bert",
-        "--max_length", "512",
-        "--target_platform", "arm",
-        "--work_dir", str(tmp_path / "work"),
+        "--input",
+        str(tmp_path / "nonexistent.onnx"),
+        "--output",
+        str(tmp_path / "out.onnx"),
+        "--model_type",
+        "bert",
+        "--max_length",
+        "512",
+        "--target_platform",
+        "arm",
+        "--work_dir",
+        str(tmp_path / "work"),
     )
     assert result.returncode != 0
     assert "not found" in result.stderr.lower() or "error" in result.stderr.lower()
@@ -37,12 +52,18 @@ def test_invalid_target_platform_exits_nonzero(tmp_path):
     argparse rejects the value before any file I/O, so no real input file is needed.
     """
     result = _run(
-        "--input", str(tmp_path / "model.onnx"),
-        "--output", str(tmp_path / "out.onnx"),
-        "--model_type", "bert",
-        "--max_length", "512",
-        "--target_platform", "sparc",
-        "--work_dir", str(tmp_path / "work"),
+        "--input",
+        str(tmp_path / "model.onnx"),
+        "--output",
+        str(tmp_path / "out.onnx"),
+        "--model_type",
+        "bert",
+        "--max_length",
+        "512",
+        "--target_platform",
+        "sparc",
+        "--work_dir",
+        str(tmp_path / "work"),
     )
     assert result.returncode != 0
 
@@ -56,3 +77,89 @@ def test_help_exits_zero():
     assert "--model_type" in result.stdout
     assert "--max_length" in result.stdout
     assert "--target_platform" in result.stdout
+
+
+def test_step1_transformer_opt_disables_attention_fusion(monkeypatch, tmp_path):
+    """Transformer optimization must explicitly keep attention fusion disabled."""
+    module = _load_module()
+
+    recorded = {}
+
+    class FakeFusionOptions:
+        def __init__(self, model_type):
+            recorded["model_type"] = model_type
+            self.enable_attention = True
+
+    class FakeOptModel:
+        def save_model_to_file(self, path):
+            recorded["saved_to"] = path
+
+    class FakeOptimizerModule:
+        @staticmethod
+        def optimize_model(path, model_type, optimization_options):
+            recorded["input_path"] = path
+            recorded["attention_enabled"] = optimization_options.enable_attention
+            return FakeOptModel()
+
+    import sys
+    import types
+
+    fake_transformers = types.ModuleType("onnxruntime.transformers")
+    fake_transformers.optimizer = FakeOptimizerModule()
+
+    fake_fusion = types.ModuleType("onnxruntime.transformers.fusion_options")
+    fake_fusion.FusionOptions = FakeFusionOptions
+
+    monkeypatch.setitem(sys.modules, "onnxruntime.transformers", fake_transformers)
+    monkeypatch.setitem(
+        sys.modules, "onnxruntime.transformers.fusion_options", fake_fusion
+    )
+
+    input_path = tmp_path / "in.onnx"
+    output_path = tmp_path / "out.onnx"
+    input_path.write_bytes(b"onnx")
+
+    module._step1_transformer_opt(input_path, output_path, "bert")
+
+    assert recorded["model_type"] == "bert"
+    assert recorded["input_path"] == str(input_path)
+    assert recorded["attention_enabled"] is False
+    assert recorded["saved_to"] == str(output_path)
+
+
+def test_step1_transformer_opt_copies_input_on_failure(monkeypatch, tmp_path, capsys):
+    """Transformer optimization must copy the input forward if optimization fails."""
+    module = _load_module()
+
+    import sys
+    import types
+
+    class FakeFusionOptions:
+        def __init__(self, model_type):
+            self.enable_attention = True
+
+    class FakeOptimizerModule:
+        @staticmethod
+        def optimize_model(path, model_type, optimization_options):
+            raise RuntimeError("boom")
+
+    fake_transformers = types.ModuleType("onnxruntime.transformers")
+    fake_transformers.optimizer = FakeOptimizerModule()
+
+    fake_fusion = types.ModuleType("onnxruntime.transformers.fusion_options")
+    fake_fusion.FusionOptions = FakeFusionOptions
+
+    monkeypatch.setitem(sys.modules, "onnxruntime.transformers", fake_transformers)
+    monkeypatch.setitem(
+        sys.modules, "onnxruntime.transformers.fusion_options", fake_fusion
+    )
+
+    input_path = tmp_path / "in.onnx"
+    output_path = tmp_path / "out.onnx"
+    input_path.write_bytes(b"test-model")
+
+    module._step1_transformer_opt(input_path, output_path, "bert")
+
+    assert output_path.read_bytes() == b"test-model"
+    stderr = capsys.readouterr().err
+    assert "transformer opt failed" in stderr

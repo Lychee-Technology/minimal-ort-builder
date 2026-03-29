@@ -41,6 +41,10 @@ RUN pip3 install --no-cache-dir \
         flatbuffers \
         "onnxruntime==1.24.4"
 
+RUN pip3 install --no-cache-dir \
+        --index-url https://download.pytorch.org/whl/cpu \
+        "torch==2.7.0+cpu"
+
 # ccache is not in AL2023 repos and the PyPI package has no arm64 wheel.
 # Use the musl-static build so it runs on any glibc version without linking issues.
 ARG CCACHE_VERSION=4.13.2
@@ -56,6 +60,7 @@ RUN curl -fsSL \
 RUN clang --version && clang++ --version \
     && which huggingface-cli && huggingface-cli --help \
     && which hf && hf --help \
-    && which ccache && ccache --version
+    && which ccache && ccache --version \
+    && python3 -c "import torch; import onnxruntime; from onnxruntime.transformers import optimizer; print(torch.__version__)"
 
 ENTRYPOINT ["/bin/bash"]

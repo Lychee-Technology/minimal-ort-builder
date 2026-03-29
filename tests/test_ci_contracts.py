@@ -7,6 +7,7 @@ ROOT = Path(__file__).parent.parent
 BUILD_SCRIPT = ROOT / "scripts" / "build_target.sh"
 WORKFLOW = ROOT / ".github" / "workflows" / "build.yml"
 SMOKE_TEST = ROOT / "scripts" / "smoke_test.c"
+DOCKERFILE = ROOT / "docker" / "lambda-build.Dockerfile"
 
 
 def test_build_script_uses_fixed_ort_conversion() -> None:
@@ -46,6 +47,26 @@ def test_workflow_cache_key_tracks_build_inputs() -> None:
     assert expected in text
 
 
+def test_dockerfile_installs_cpu_torch() -> None:
+    """The build image must install CPU-only torch for transformer optimization."""
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    assert "download.pytorch.org/whl/cpu" in text
+    assert "torch==" in text
+
+
+def test_dockerfile_keeps_onnxruntime_pinned() -> None:
+    """Torch support must not loosen the onnxruntime version pin."""
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    assert '"onnxruntime==1.24.4"' in text
+
+
+def test_build_script_still_patches_converter_to_basic() -> None:
+    """The build script must keep ORT conversion capped at BASIC."""
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    assert "ORT_ENABLE_BASIC" in text
+    assert "ORT_ENABLE_ALL" in text
+
+
 def test_workflow_uses_node24_ready_major_action_versions() -> None:
     """Workflow should pin actions to Node 24-ready major versions."""
     text = WORKFLOW.read_text(encoding="utf-8")
@@ -71,3 +92,9 @@ def test_smoke_test_aligns_attention_mask_with_input_ids_sequence_length() -> No
     )
     assert 'strcmp(input_names[i], "attention_mask") == 0' in text
     assert "dims[1] = input_ids_seq_len" in text
+
+
+def test_smoke_test_still_disables_runtime_graph_optimization() -> None:
+    """The smoke test must keep runtime graph optimization disabled."""
+    text = SMOKE_TEST.read_text(encoding="utf-8")
+    assert "ORT_DISABLE_ALL" in text
