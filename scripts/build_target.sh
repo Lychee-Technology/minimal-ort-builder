@@ -98,6 +98,14 @@ echo "==> Cloning ORT ${ORT_VERSION}"
 git clone --depth 1 --branch "${ORT_VERSION}" \
     https://github.com/microsoft/onnxruntime.git "${ORT_SRC}"
 
+# Patch: cap graph optimization at BASIC in convert_onnx_models_to_ort.py.
+# The converter always applies ORT_ENABLE_ALL internally, which fuses
+# attention into MultiHeadAttention — incompatible with jina-style broadcast
+# attention_bias [1,heads,1,seq_len].  Capping at BASIC limits the converter
+# to constant folding / dead-node elimination only.
+sed -i 's/return ort.GraphOptimizationLevel.ORT_ENABLE_ALL/return ort.GraphOptimizationLevel.ORT_ENABLE_BASIC/' \
+    "${ORT_SRC}/tools/python/util/onnx_model_utils.py"
+
 # ---------------------------------------------------------------------------
 # 7. Optimize and quantize ONNX model
 # ---------------------------------------------------------------------------
