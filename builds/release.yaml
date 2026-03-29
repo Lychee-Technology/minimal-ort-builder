@@ -16,12 +16,13 @@ build:
 
 targets:
   - id: jinaai/jina-embeddings-v5-text-nano-retrieval
-    quant: q4f16
+    quant: int8
     bundle_extras:
       - tokenizer.json
       - build-info.json
     metadata:
       model_format: ort
+      model_type: bert
       pooling: last_token
       input_kind: retrieval
       query_prefix: "Query: "
@@ -32,7 +33,6 @@ targets:
     model:
       repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
       revision: main
-      primary: onnx/model_q4f16.onnx
+      primary: onnx/model.onnx
       companions:
-        - onnx/model_q4f16.onnx_data
         - tokenizer.json
