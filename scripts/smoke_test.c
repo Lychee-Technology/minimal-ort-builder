@@ -65,6 +65,13 @@ int main(int argc, char *argv[]) {
     /* 2. Session options + session                                         */
     /* ------------------------------------------------------------------ */
     ORT_CHECK(api->CreateSessionOptions(&opts), "CreateSessionOptions");
+    /* Disable runtime graph optimization.  The model is already fully
+     * optimized by optimize_model.py (transformer opt, shape specialization,
+     * ORT graph opt, int8 quantization).  Allowing ORT to re-optimize at
+     * load time introduces fused ops (e.g. MultiHeadAttention) whose shape
+     * requirements conflict with the model's broadcast attention bias. */
+    ORT_CHECK(api->SetSessionGraphOptimizationLevel(opts, ORT_DISABLE_ALL),
+              "SetSessionGraphOptimizationLevel");
     ORT_CHECK(api->CreateSession(env, model_path, opts, &session),
               "CreateSession");
 
