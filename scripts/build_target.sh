@@ -135,6 +135,13 @@ python3 "${ORT_SRC}/tools/python/create_reduced_build_config.py" \
     "${OPTIMIZED_ONNX}" \
     "${OPERATOR_CONFIG}"
 
+# MatMulIntegerToFloat is an ORT-internal fused kernel (com.microsoft domain).
+# It is not present in the ONNX model scanned above; it gets introduced at
+# step 11 when convert_onnx_models_to_ort.py --optimization_style Fixed fuses
+# MatMulInteger + DequantizeLinear into a single kernel.  The minimal build
+# must include it explicitly.
+echo "MatMulIntegerToFloat;com.microsoft;1" >> "${OPERATOR_CONFIG}"
+
 # ---------------------------------------------------------------------------
 # 9. Build ORT
 # ---------------------------------------------------------------------------
