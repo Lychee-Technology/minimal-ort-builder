@@ -99,16 +99,44 @@ git clone --depth 1 --branch "${ORT_VERSION}" \
     https://github.com/microsoft/onnxruntime.git "${ORT_SRC}"
 
 # ---------------------------------------------------------------------------
-# 7. Generate reduced operator config
+# 7. Optimize and quantize ONNX model
+# ---------------------------------------------------------------------------
+echo "==> Optimizing and quantizing ONNX model"
+OPTIMIZED_ONNX="${WORK_DIR}/optimized.onnx"
+OPT_WORK_DIR="${WORK_DIR}/optimize"
+MODEL_TYPE="$(echo "${MODEL_METADATA}" | jq -r '.model_type // "bert"')"
+MAX_LENGTH="$(echo "${MODEL_METADATA}" | jq -r '.max_length // 512')"
+case "$(uname -m)" in
+    aarch64|arm*) ORT_TARGET_PLATFORM="arm" ;;
+    *)            ORT_TARGET_PLATFORM="amd64" ;;
+esac
+python3 "$(dirname "$0")/optimize_model.py" \
+    --input    "${MODEL_DIR}/${HF_PRIMARY}" \
+    --output   "${OPTIMIZED_ONNX}" \
+    --model_type "${MODEL_TYPE}" \
+    --max_length "${MAX_LENGTH}" \
+    --target_platform "${ORT_TARGET_PLATFORM}" \
+    --work_dir "${OPT_WORK_DIR}"
+# NOTE: ORT_TARGET_PLATFORM is set here and reused by step 11 (convert_onnx_models_to_ort.py).
+# The variable must remain in scope for the rest of the script (no subshells between steps).
+
+# Place optimized model in its own directory for convert_onnx_models_to_ort.py
+# (the converter takes a directory argument and converts all .onnx files inside it)
+ORT_INPUT_DIR="${WORK_DIR}/ort_input"
+mkdir -p "${ORT_INPUT_DIR}"
+cp "${OPTIMIZED_ONNX}" "${ORT_INPUT_DIR}/model.onnx"
+
+# ---------------------------------------------------------------------------
+# 8. Generate reduced operator config
 # ---------------------------------------------------------------------------
 echo "==> Generating reduced operator config"
 OPERATOR_CONFIG="${WORK_DIR}/operators.config"
 python3 "${ORT_SRC}/tools/python/create_reduced_build_config.py" \
-    "${MODEL_DIR}" \
+    "${OPTIMIZED_ONNX}" \
     "${OPERATOR_CONFIG}"
 
 # ---------------------------------------------------------------------------
-# 8. Build ORT
+# 9. Build ORT
 # ---------------------------------------------------------------------------
 echo "==> Building ORT (this will take a while)"
 
@@ -199,7 +227,7 @@ python3 "${ORT_SRC}/tools/ci_build/build.py" \
     --cmake_extra_defines "${CMAKE_EXTRA_DEFINES[@]}"
 
 # ---------------------------------------------------------------------------
-# 9. Verify libonnxruntime.so exists
+# 10. Verify libonnxruntime.so exists
 # ---------------------------------------------------------------------------
 echo "==> Verifying build output"
 BUILT_SO="${BUILD_DIR}/Release/libonnxruntime.so"
@@ -209,14 +237,15 @@ if [ ! -f "${BUILT_SO}" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 10. Convert ONNX model to ORT format (minimal build requires ORT format)
+# 11. Convert ONNX model to ORT format (minimal build requires ORT format)
 # ---------------------------------------------------------------------------
 echo "==> Converting ONNX model to ORT format"
 ORT_MODEL_DIR="${WORK_DIR}/ort_model"
 mkdir -p "${ORT_MODEL_DIR}"
 python3 "${ORT_SRC}/tools/python/convert_onnx_models_to_ort.py" \
-    "${MODEL_DIR}/$(dirname "${HF_PRIMARY}")" \
+    "${ORT_INPUT_DIR}" \
     --optimization_style Fixed \
+    --target_platform "${ORT_TARGET_PLATFORM}" \
     --output_dir "${ORT_MODEL_DIR}"
 
 # The converter mirrors the directory structure; find the .ort file
@@ -228,7 +257,7 @@ fi
 echo "    ORT model: ${ORT_MODEL_PATH}"
 
 # ---------------------------------------------------------------------------
-# 11. Compile and run smoke test
+# 12. Compile and run smoke test
 # ---------------------------------------------------------------------------
 echo "==> Running smoke test"
 SMOKE_SRC="$(dirname "$0")/smoke_test.c"
@@ -252,7 +281,7 @@ if [ "${SMOKE_EXIT}" -ne 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 12. Stage artifacts
+# 13. Stage artifacts
 # ---------------------------------------------------------------------------
 echo "==> Staging artifacts"
 
@@ -291,7 +320,7 @@ if [ -f "/manifest/release.yaml" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 12b. Prune stage dir to the bundle whitelist
+# 14. Prune stage dir to the bundle whitelist
 #
 # Core files always kept: libonnxruntime.so, model.ort.
 # All other files included only if listed in BUNDLE_EXTRAS (space-separated).
@@ -324,7 +353,7 @@ echo "    Computing SHA256SUMS"
 (cd "${STAGE_DIR}" && find . -type f ! -name SHA256SUMS | sort | xargs sha256sum > SHA256SUMS)
 
 # ---------------------------------------------------------------------------
-# 13. Create tarball
+# 15. Create tarball
 # ---------------------------------------------------------------------------
 echo "==> Creating tarball"
 # TARGET_ID may contain '/' (e.g. "jinaai/jina-embeddings-v5-text-nano-retrieval");
@@ -335,7 +364,7 @@ mkdir -p "${OUTPUT_DIR}"
 tar -czf "${TARBALL}" -C "${STAGE_DIR}" .
 
 # ---------------------------------------------------------------------------
-# 14. Success
+# 16. Success
 # ---------------------------------------------------------------------------
 echo "==> Build complete"
 echo "    Tarball: ${TARBALL}"
