@@ -59,8 +59,7 @@ def _step0_inline_external_data(input_path: Path, output_path: Path) -> None:
 
     model = onnx.load(str(input_path), load_external_data=False)
     has_external = any(
-        t.data_location == onnx.TensorProto.EXTERNAL
-        for t in model.graph.initializer
+        t.data_location == onnx.TensorProto.EXTERNAL for t in model.graph.initializer
     )
     if not has_external:
         shutil.copy2(input_path, output_path)
@@ -80,7 +79,9 @@ def _step0_inline_external_data(input_path: Path, output_path: Path) -> None:
     print(f"    inlined {inlined} external tensor(s)")
 
 
-def _step1_transformer_opt(input_path: Path, output_path: Path, model_type: str) -> None:
+def _step1_transformer_opt(
+    input_path: Path, output_path: Path, model_type: str
+) -> None:
     """Transformer graph optimization. Skips (with warning) on any failure.
 
     Attention fusion is disabled because models like jina-embeddings-v5 use a
@@ -121,7 +122,9 @@ def _step2a_shape_specialization(
         onnx_model_utils.make_dim_param_fixed(model.graph, batch_param, 1)
         print(f"    shape: fixed '{batch_param}' = 1")
     else:
-        print("    shape: no batch dim param found; skipping batch fix", file=sys.stderr)
+        print(
+            "    shape: no batch dim param found; skipping batch fix", file=sys.stderr
+        )
 
     if seq_param:
         onnx_model_utils.make_dim_param_fixed(model.graph, seq_param, max_length)
@@ -196,15 +199,21 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="ONNX optimization + int8 quantization pipeline"
     )
-    parser.add_argument("--input", required=True, type=Path, help="Input ONNX model path")
-    parser.add_argument("--output", required=True, type=Path, help="Output ONNX model path")
+    parser.add_argument(
+        "--input", required=True, type=Path, help="Input ONNX model path"
+    )
+    parser.add_argument(
+        "--output", required=True, type=Path, help="Output ONNX model path"
+    )
     parser.add_argument(
         "--model_type",
         required=True,
         help="Model type for transformer optimizer (e.g. bert, gpt2)",
     )
     parser.add_argument(
-        "--max_length", required=True, type=int, help="Sequence length for shape specialization"
+        "--max_length",
+        type=int,
+        help="Optional sequence length for shape specialization; omit to keep dynamic shapes",
     )
     parser.add_argument(
         "--target_platform",
@@ -224,8 +233,11 @@ def main() -> None:
         print(f"ERROR: input not found: {args.input}", file=sys.stderr)
         sys.exit(1)
 
-    if args.max_length <= 0:
-        print(f"ERROR: --max_length must be positive, got {args.max_length}", file=sys.stderr)
+    if args.max_length is not None and args.max_length <= 0:
+        print(
+            f"ERROR: --max_length must be positive, got {args.max_length}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     args.work_dir.mkdir(parents=True, exist_ok=True)
@@ -244,11 +256,18 @@ def main() -> None:
     print("==> Step 1: transformer optimization")
     _step1_transformer_opt(step0_out, step1_out, args.model_type)
 
-    print("==> Step 2a: static shape specialization")
-    _step2a_shape_specialization(step1_out, step2a_out, args.max_length)
+    step2_input = step1_out
+    if args.max_length is not None:
+        print("==> Step 2a: static shape specialization")
+        _step2a_shape_specialization(step1_out, step2a_out, args.max_length)
+        step2_input = step2a_out
+    else:
+        print(
+            "==> Step 2a: static shape specialization (skipped; keeping dynamic shapes)"
+        )
 
     print("==> Step 2b: symbolic shape inference")
-    _step2b_shape_inference(step2a_out, step2b_out)
+    _step2b_shape_inference(step2_input, step2b_out)
 
     print("==> Step 3: ORT graph optimization")
     _step3_ort_graph_opt(step2b_out, step3_out)

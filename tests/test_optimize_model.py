@@ -36,8 +36,6 @@ def test_missing_input_file_exits_nonzero(tmp_path):
         str(tmp_path / "out.onnx"),
         "--model_type",
         "bert",
-        "--max_length",
-        "512",
         "--target_platform",
         "arm",
         "--work_dir",
@@ -58,8 +56,6 @@ def test_invalid_target_platform_exits_nonzero(tmp_path):
         str(tmp_path / "out.onnx"),
         "--model_type",
         "bert",
-        "--max_length",
-        "512",
         "--target_platform",
         "sparc",
         "--work_dir",
@@ -75,8 +71,81 @@ def test_help_exits_zero():
     assert "--input" in result.stdout
     assert "--output" in result.stdout
     assert "--model_type" in result.stdout
-    assert "--max_length" in result.stdout
     assert "--target_platform" in result.stdout
+
+
+def test_help_mentions_optional_max_length_for_shape_specialization():
+    """The CLI should still expose optional shape specialization for opt-in use."""
+    result = _run("--help")
+    assert result.returncode == 0
+    assert "--max_length" in result.stdout
+    assert "shape specialization" in result.stdout.lower()
+
+
+def test_main_skips_shape_specialization_when_max_length_not_provided(
+    monkeypatch, tmp_path
+):
+    """The default pipeline should keep dynamic shapes by skipping step 2a."""
+    module = _load_module()
+
+    calls = []
+
+    monkeypatch.setattr(
+        module,
+        "_step0_inline_external_data",
+        lambda inp, out: calls.append(("step0", inp, out)),
+    )
+    monkeypatch.setattr(
+        module,
+        "_step1_transformer_opt",
+        lambda inp, out, model_type: calls.append(("step1", inp, out, model_type)),
+    )
+    monkeypatch.setattr(
+        module,
+        "_step2a_shape_specialization",
+        lambda inp, out, max_length: calls.append(("step2a", inp, out, max_length)),
+    )
+    monkeypatch.setattr(
+        module,
+        "_step2b_shape_inference",
+        lambda inp, out: calls.append(("step2b", inp, out)),
+    )
+    monkeypatch.setattr(
+        module,
+        "_step3_ort_graph_opt",
+        lambda inp, out: calls.append(("step3", inp, out)),
+    )
+    monkeypatch.setattr(
+        module,
+        "_step4_int8_quantize",
+        lambda inp, out: calls.append(("step4", inp, out)),
+    )
+
+    input_path = tmp_path / "model.onnx"
+    output_path = tmp_path / "optimized.onnx"
+    input_path.write_bytes(b"onnx")
+
+    old_argv = sys.argv
+    sys.argv = [
+        str(SCRIPT),
+        "--input",
+        str(input_path),
+        "--output",
+        str(output_path),
+        "--model_type",
+        "bert",
+        "--target_platform",
+        "arm",
+        "--work_dir",
+        str(tmp_path / "work"),
+    ]
+    try:
+        module.main()
+    finally:
+        sys.argv = old_argv
+
+    call_names = [call[0] for call in calls]
+    assert call_names == ["step0", "step1", "step2b", "step3", "step4"]
 
 
 def test_step1_transformer_opt_disables_attention_fusion(monkeypatch, tmp_path):

@@ -67,6 +67,13 @@ def test_build_script_still_patches_converter_to_basic() -> None:
     assert "ORT_ENABLE_ALL" in text
 
 
+def test_build_script_does_not_force_max_length_shape_specialization() -> None:
+    """The build should keep dynamic shapes unless max_length is explicitly opted in."""
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    assert '--max_length "${MAX_LENGTH}"' not in text
+    assert ".max_length // 512" not in text
+
+
 def test_workflow_uses_node24_ready_major_action_versions() -> None:
     """Workflow should pin actions to Node 24-ready major versions."""
     text = WORKFLOW.read_text(encoding="utf-8")

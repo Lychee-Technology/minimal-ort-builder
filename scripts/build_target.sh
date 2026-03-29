@@ -114,7 +114,6 @@ echo "==> Optimizing and quantizing ONNX model"
 OPTIMIZED_ONNX="${WORK_DIR}/optimized.onnx"
 OPT_WORK_DIR="${WORK_DIR}/optimize"
 MODEL_TYPE="$(echo "${MODEL_METADATA}" | jq -r '.model_type // "bert"')"
-MAX_LENGTH="$(echo "${MODEL_METADATA}" | jq -r '.max_length // 512')"
 case "$(uname -m)" in
     aarch64|arm*) ORT_TARGET_PLATFORM="arm" ;;
     *)            ORT_TARGET_PLATFORM="amd64" ;;
@@ -123,7 +122,6 @@ python3 "$(dirname "$0")/optimize_model.py" \
     --input    "${MODEL_DIR}/${HF_PRIMARY}" \
     --output   "${OPTIMIZED_ONNX}" \
     --model_type "${MODEL_TYPE}" \
-    --max_length "${MAX_LENGTH}" \
     --target_platform "${ORT_TARGET_PLATFORM}" \
     --work_dir "${OPT_WORK_DIR}"
 # NOTE: ORT_TARGET_PLATFORM is set here and reused by step 11 (convert_onnx_models_to_ort.py).
