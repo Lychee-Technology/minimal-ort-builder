@@ -217,7 +217,6 @@ mkdir -p "${ORT_MODEL_DIR}"
 python3 "${ORT_SRC}/tools/python/convert_onnx_models_to_ort.py" \
     "${MODEL_DIR}/$(dirname "${HF_PRIMARY}")" \
     --optimization_style Fixed \
-    --optimization_level all \
     --output_dir "${ORT_MODEL_DIR}"
 
 # The converter mirrors the directory structure; find the .ort file
