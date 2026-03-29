@@ -46,6 +46,21 @@ def test_workflow_cache_key_tracks_build_inputs() -> None:
     assert expected in text
 
 
+def test_workflow_uses_node24_ready_major_action_versions() -> None:
+    """Workflow should pin actions to Node 24-ready major versions."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "actions/checkout@v6" in text
+    assert "actions/setup-python@v6" in text
+    assert "actions/cache@v5" in text
+    assert "actions/upload-artifact@v7" in text
+    assert "actions/download-artifact@v7" in text
+    assert "actions/checkout@v6.0.2" not in text
+    assert "actions/setup-python@v6.2.0" not in text
+    assert "actions/cache@v5.0.4" not in text
+    assert "actions/upload-artifact@v7.0.0" not in text
+    assert "actions/download-artifact@v7.0.0" not in text
+
+
 def test_smoke_test_aligns_attention_mask_with_input_ids_sequence_length() -> None:
     """Smoke inputs must keep attention_mask sequence length aligned with input_ids."""
     text = SMOKE_TEST.read_text(encoding="utf-8")
