@@ -177,9 +177,18 @@ def _step3_ort_graph_opt(input_path: Path, output_path: Path) -> None:
 
 def _step4_int8_quantize(input_path: Path, output_path: Path) -> None:
     """Dynamic int8 quantization. Hard fails."""
+    import logging
+
     from onnxruntime.quantization import QuantType, quantize_dynamic
 
-    quantize_dynamic(str(input_path), str(output_path), weight_type=QuantType.QInt8)
+    # Suppress the "please run pre-processing" warning — steps 2b (symbolic
+    # shape inference) and 3 (ORT graph optimization) already cover it.
+    prev_level = logging.root.level
+    logging.root.setLevel(logging.ERROR)
+    try:
+        quantize_dynamic(str(input_path), str(output_path), weight_type=QuantType.QInt8)
+    finally:
+        logging.root.setLevel(prev_level)
     print("    int8 quantization: OK")
 
 
