@@ -82,6 +82,15 @@ def test_help_mentions_optional_max_length_for_shape_specialization():
     assert "shape specialization" in result.stdout.lower()
 
 
+def test_help_mentions_optional_skip_int8_quantize_flag():
+    """The CLI should expose a way to skip step 4 for pre-quantized ONNX inputs."""
+    result = _run("--help")
+    assert result.returncode == 0
+    assert "--skip-int8-quantize" in result.stdout
+
+
+
+
 def test_main_skips_shape_specialization_when_max_length_not_provided(
     monkeypatch, tmp_path
 ):
@@ -113,7 +122,7 @@ def test_main_skips_shape_specialization_when_max_length_not_provided(
     monkeypatch.setattr(
         module,
         "_step3_ort_graph_opt",
-        lambda inp, out: calls.append(("step3", inp, out)),
+        lambda inp, out: (calls.append(("step3", inp, out)), Path(out).write_bytes(b"ort"))[-1],
     )
     monkeypatch.setattr(
         module,
@@ -146,6 +155,72 @@ def test_main_skips_shape_specialization_when_max_length_not_provided(
 
     call_names = [call[0] for call in calls]
     assert call_names == ["step0", "step1", "step2b", "step3", "step4"]
+
+
+
+def test_main_skips_step4_when_skip_int8_quantize_is_requested(monkeypatch, tmp_path):
+    """Pre-quantized ONNX inputs should still run steps 0/1/2b/3 and stop before step 4."""
+    module = _load_module()
+
+    calls = []
+
+    monkeypatch.setattr(
+        module,
+        "_step0_inline_external_data",
+        lambda inp, out: calls.append(("step0", inp, out)),
+    )
+    monkeypatch.setattr(
+        module,
+        "_step1_transformer_opt",
+        lambda inp, out, model_type: calls.append(("step1", inp, out, model_type)),
+    )
+    monkeypatch.setattr(
+        module,
+        "_step2a_shape_specialization",
+        lambda inp, out, max_length: calls.append(("step2a", inp, out, max_length)),
+    )
+    monkeypatch.setattr(
+        module,
+        "_step2b_shape_inference",
+        lambda inp, out: calls.append(("step2b", inp, out)),
+    )
+    monkeypatch.setattr(
+        module,
+        "_step3_ort_graph_opt",
+        lambda inp, out: (calls.append(("step3", inp, out)), Path(out).write_bytes(b"ort"))[-1],
+    )
+    monkeypatch.setattr(
+        module,
+        "_step4_int8_quantize",
+        lambda inp, out: calls.append(("step4", inp, out)),
+    )
+
+    input_path = tmp_path / "model.onnx"
+    output_path = tmp_path / "optimized.onnx"
+    input_path.write_bytes(b"onnx")
+
+    old_argv = sys.argv
+    sys.argv = [
+        str(SCRIPT),
+        "--input",
+        str(input_path),
+        "--output",
+        str(output_path),
+        "--model_type",
+        "bert",
+        "--target_platform",
+        "arm",
+        "--work_dir",
+        str(tmp_path / "work"),
+        "--skip-int8-quantize",
+    ]
+    try:
+        module.main()
+    finally:
+        sys.argv = old_argv
+
+    call_names = [call[0] for call in calls]
+    assert call_names == ["step0", "step1", "step2b", "step3"]
 
 
 def test_step1_transformer_opt_disables_attention_fusion(monkeypatch, tmp_path):
