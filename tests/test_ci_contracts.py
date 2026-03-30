@@ -9,6 +9,8 @@ WORKFLOW = ROOT / ".github" / "workflows" / "build.yml"
 SMOKE_TEST = ROOT / "scripts" / "smoke_test.c"
 DOCKERFILE = ROOT / "docker" / "lambda-build.Dockerfile"
 
+RELEASE_MANIFEST = ROOT / "builds" / "release.yaml"
+
 
 def test_build_script_uses_fixed_ort_conversion() -> None:
     """CI must convert optimized ONNX to a single fixed ORT artifact."""
@@ -105,3 +107,18 @@ def test_smoke_test_still_disables_runtime_graph_optimization() -> None:
     """The smoke test must keep runtime graph optimization disabled."""
     text = SMOKE_TEST.read_text(encoding="utf-8")
     assert "ORT_DISABLE_ALL" in text
+
+
+def test_release_manifest_uses_published_quantized_onnx_for_jina_nano() -> None:
+    """The Jina nano target should consume the published quantized ONNX artifact."""
+    text = RELEASE_MANIFEST.read_text(encoding="utf-8")
+    assert "primary: onnx/model_quantized.onnx" in text
+    assert "- onnx/model_quantized.onnx_data" in text
+
+
+def test_build_script_bypasses_optimize_model_for_prequantized_primary() -> None:
+    """Pre-quantized ONNX inputs should skip the local optimization+quantization pipeline."""
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    assert 'PREQUANTIZED_PRIMARY=0' in text
+    assert 'basename "${HF_PRIMARY}"' in text
+    assert 'Using pre-quantized ONNX model directly' in text
