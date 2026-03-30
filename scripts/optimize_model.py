@@ -227,6 +227,11 @@ def main() -> None:
         type=Path,
         help="Directory for intermediate ONNX files (inside WORK_DIR, cleaned by build trap)",
     )
+    parser.add_argument(
+        "--skip-int8-quantize",
+        action="store_true",
+        help="Run steps 0/1/2b/3 and stop before step 4 (for pre-quantized ONNX inputs)",
+    )
     args = parser.parse_args()
 
     if not args.input.exists():
@@ -272,8 +277,12 @@ def main() -> None:
     print("==> Step 3: ORT graph optimization")
     _step3_ort_graph_opt(step2b_out, step3_out)
 
-    print("==> Step 4: dynamic int8 quantization")
-    _step4_int8_quantize(step3_out, args.output)
+    if args.skip_int8_quantize:
+        print("==> Step 4: dynamic int8 quantization (skipped)")
+        shutil.copy2(step3_out, args.output)
+    else:
+        print("==> Step 4: dynamic int8 quantization")
+        _step4_int8_quantize(step3_out, args.output)
 
     print(f"==> Optimization complete: {args.output}")
 

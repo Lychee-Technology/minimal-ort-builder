@@ -116,9 +116,11 @@ def test_release_manifest_uses_published_quantized_onnx_for_jina_nano() -> None:
     assert "- onnx/model_quantized.onnx_data" in text
 
 
-def test_build_script_bypasses_optimize_model_for_prequantized_primary() -> None:
-    """Pre-quantized ONNX inputs should skip the local optimization+quantization pipeline."""
+def test_build_script_skips_only_step4_for_prequantized_primary() -> None:
+    """Pre-quantized ONNX inputs should still run optimize_model.py and only skip step 4."""
     text = BUILD_SCRIPT.read_text(encoding="utf-8")
     assert 'PREQUANTIZED_PRIMARY=0' in text
     assert 'basename "${HF_PRIMARY}"' in text
-    assert 'Using pre-quantized ONNX model directly' in text
+    assert 'Using pre-quantized ONNX model directly' not in text
+    assert '--skip-int8-quantize' in text
+    assert 'python3 "$(dirname "$0")/optimize_model.py"' in text
