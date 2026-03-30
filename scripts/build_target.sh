@@ -71,6 +71,7 @@ if [ -n "${HF_COMPANIONS}" ]; then
     done
 fi
 
+
 # ---------------------------------------------------------------------------
 # 5. Verify all files exist
 # ---------------------------------------------------------------------------
@@ -91,6 +92,24 @@ if [ -n "${HF_COMPANIONS}" ]; then
     done
 fi
 
+PREQUANTIZED_PRIMARY=0
+PREQUANTIZED_ONNX_DATA_BASENAME=""
+PREQUANTIZED_ONNX_DATA_SOURCE=""
+if [ "$(basename "${HF_PRIMARY}")" = "model_quantized.onnx" ]; then
+    PREQUANTIZED_PRIMARY=1
+    PREQUANTIZED_ONNX_DATA_BASENAME="model_quantized.onnx_data"
+    for companion in ${HF_COMPANIONS}; do
+        if [ "$(basename "${companion}")" = "${PREQUANTIZED_ONNX_DATA_BASENAME}" ]; then
+            PREQUANTIZED_ONNX_DATA_SOURCE="${MODEL_DIR}/${companion}"
+            break
+        fi
+    done
+    if [ -z "${PREQUANTIZED_ONNX_DATA_SOURCE}" ]; then
+        echo "ERROR: pre-quantized primary requires companion ${PREQUANTIZED_ONNX_DATA_BASENAME}" >&2
+        exit 1
+    fi
+fi
+
 # ---------------------------------------------------------------------------
 # 6. Clone ORT source
 # ---------------------------------------------------------------------------
@@ -108,22 +127,28 @@ sed -i 's/return ort.GraphOptimizationLevel.ORT_ENABLE_ALL/return ort.GraphOptim
     "${ORT_SRC}/tools/python/util/onnx_model_utils.py"
 
 # ---------------------------------------------------------------------------
-# 7. Optimize and quantize ONNX model
+# 7. Prepare ONNX model for ORT conversion
 # ---------------------------------------------------------------------------
-echo "==> Optimizing and quantizing ONNX model"
 OPTIMIZED_ONNX="${WORK_DIR}/optimized.onnx"
-OPT_WORK_DIR="${WORK_DIR}/optimize"
 MODEL_TYPE="$(echo "${MODEL_METADATA}" | jq -r '.model_type // "bert"')"
 case "$(uname -m)" in
     aarch64|arm*) ORT_TARGET_PLATFORM="arm" ;;
     *)            ORT_TARGET_PLATFORM="amd64" ;;
 esac
-python3 "$(dirname "$0")/optimize_model.py" \
-    --input    "${MODEL_DIR}/${HF_PRIMARY}" \
-    --output   "${OPTIMIZED_ONNX}" \
-    --model_type "${MODEL_TYPE}" \
-    --target_platform "${ORT_TARGET_PLATFORM}" \
-    --work_dir "${OPT_WORK_DIR}"
+if [ "${PREQUANTIZED_PRIMARY}" = "1" ]; then
+    echo "==> Using pre-quantized ONNX model directly"
+    cp "${MODEL_DIR}/${HF_PRIMARY}" "${OPTIMIZED_ONNX}"
+    cp "${PREQUANTIZED_ONNX_DATA_SOURCE}" "${WORK_DIR}/${PREQUANTIZED_ONNX_DATA_BASENAME}"
+else
+    echo "==> Optimizing and quantizing ONNX model"
+    OPT_WORK_DIR="${WORK_DIR}/optimize"
+    python3 "$(dirname "$0")/optimize_model.py" \
+        --input    "${MODEL_DIR}/${HF_PRIMARY}" \
+        --output   "${OPTIMIZED_ONNX}" \
+        --model_type "${MODEL_TYPE}" \
+        --target_platform "${ORT_TARGET_PLATFORM}" \
+        --work_dir "${OPT_WORK_DIR}"
+fi
 # NOTE: ORT_TARGET_PLATFORM is set here and reused by step 11 (convert_onnx_models_to_ort.py).
 # The variable must remain in scope for the rest of the script (no subshells between steps).
 
@@ -132,6 +157,9 @@ python3 "$(dirname "$0")/optimize_model.py" \
 ORT_INPUT_DIR="${WORK_DIR}/ort_input"
 mkdir -p "${ORT_INPUT_DIR}"
 cp "${OPTIMIZED_ONNX}" "${ORT_INPUT_DIR}/model.onnx"
+if [ "${PREQUANTIZED_PRIMARY}" = "1" ]; then
+    cp "${WORK_DIR}/${PREQUANTIZED_ONNX_DATA_BASENAME}" "${ORT_INPUT_DIR}/${PREQUANTIZED_ONNX_DATA_BASENAME}"
+fi
 
 # ---------------------------------------------------------------------------
 # 8. Convert ONNX → ORT format (using the installed onnxruntime Python
