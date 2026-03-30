@@ -117,7 +117,7 @@ docker build --platform linux/arm64 \
   -f docker/lambda-build.Dockerfile .
 ```
 
-This installs the compiler toolchain, `cmake`, `ninja`, `jq`, and the Python packages (`huggingface_hub`, `onnx`, etc.) needed by the build script.
+This installs the compiler toolchain, `cmake`, `ninja`, `jq`, and the Python packages needed by the build script, including `onnxruntime==1.24.4` and CPU-only `torch`. PyTorch is a build-time dependency only: it is used so `onnxruntime.transformers` can run transformer optimization during model preprocessing, but the final runtime bundle does not depend on PyTorch.
 
 ### Step 2 — run a single target
 
@@ -161,6 +161,12 @@ docker run ... -e HF_TOKEN ...
 ```
 
 The build script reads `HF_TOKEN` automatically from the environment when calling `huggingface-cli download`.
+
+Current pipeline behavior:
+
+- Transformer optimization runs at build time with attention fusion disabled.
+- The default workflow keeps dynamic input shapes; it no longer fixes `seq_len` to `metadata.max_length` during the normal build.
+- Shape specialization remains available as an opt-in `scripts/optimize_model.py` CLI path for experiments/debugging, but the shipping GitHub Actions build does not enable it.
 
 ---
 

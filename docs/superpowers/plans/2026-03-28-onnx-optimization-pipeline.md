@@ -8,6 +8,15 @@
 
 **Tech Stack:** Python 3.11, `onnxruntime==1.24.4` (already installed in Docker), `onnx` (already installed), `pytest` for tests.
 
+## Implementation Status Note
+
+This plan is preserved as the original implementation checklist, but the shipped pipeline has intentionally diverged in two places:
+
+- The Docker build image now installs CPU-only `torch` so Step 1 transformer optimization can execute for BERT-family models.
+- The default build no longer passes `--max_length`, so Step 2a shape specialization is skipped and the final optimized ONNX / ORT model retains dynamic input lengths.
+
+The current implementation still keeps attention fusion disabled, keeps ORT conversion capped at BASIC, and keeps the smoke test's runtime graph optimization disabled.
+
 ---
 
 ## File Map
