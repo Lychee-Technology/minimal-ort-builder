@@ -16,7 +16,7 @@ build:
 
 targets:
   - id: jinaai/jina-embeddings-v5-text-nano-retrieval
-    quant: int8
+    quant: q4f16
     bundle_extras:
       - tokenizer.json
       - build-info.json
