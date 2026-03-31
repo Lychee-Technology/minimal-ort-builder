@@ -33,7 +33,7 @@ targets:
     model:
       repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
       revision: main
-      primary: onnx/model_quantized.onnx
+      primary: onnx/model_q4f16.onnx
       companions:
-        - onnx/model_quantized.onnx_data
+        - onnx/model_q4f16.onnx_data
         - tokenizer.json

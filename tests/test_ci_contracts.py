@@ -112,8 +112,8 @@ def test_smoke_test_still_disables_runtime_graph_optimization() -> None:
 def test_release_manifest_uses_published_quantized_onnx_for_jina_nano() -> None:
     """The Jina nano target should consume the published quantized ONNX artifact."""
     text = RELEASE_MANIFEST.read_text(encoding="utf-8")
-    assert "primary: onnx/model_quantized.onnx" in text
-    assert "- onnx/model_quantized.onnx_data" in text
+    assert "primary: onnx/model_q4f16.onnx" in text
+    assert "- onnx/model_q4f16.onnx_data" in text
 
 
 def test_build_script_skips_only_step4_for_prequantized_primary() -> None:

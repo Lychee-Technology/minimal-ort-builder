@@ -93,7 +93,7 @@ if [ -n "${HF_COMPANIONS}" ]; then
 fi
 
 PREQUANTIZED_PRIMARY=0
-if [ "$(basename "${HF_PRIMARY}")" = "model_quantized.onnx" ]; then
+if [ "$(basename "${HF_PRIMARY}")" = "model_q4f16.onnx" ]; then
     PREQUANTIZED_PRIMARY=1
 fi
 
