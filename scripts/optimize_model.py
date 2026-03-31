@@ -8,7 +8,7 @@ Pipeline steps:
   1. Transformer optimization   (onnxruntime.transformers, attention fusion disabled — fallback: skip)
   2a. Static shape specialization  (batch=1, seq_len=max_length — hard fail)
   2b. Symbolic shape inference   (fallback: skip)
-  3. ORT graph optimization      (offline ORT_ENABLE_BASIC — hard fail)
+  3. ORT graph optimization      (offline ORT_ENABLE_ALL — hard fail)
   4. Dynamic int8 quantization   (weight_type=QInt8 — hard fail)
 """
 
@@ -157,25 +157,18 @@ def _step2b_shape_inference(input_path: Path, output_path: Path) -> None:
 
 
 def _step3_ort_graph_opt(input_path: Path, output_path: Path) -> None:
-    """Offline ORT graph optimization at ORT_ENABLE_BASIC level. Hard fails.
-
-    ORT_ENABLE_BASIC covers constant folding, dead-node elimination, and
-    redundant-cast removal without applying transformer-specific attention
-    fusions, which avoids the MultiHeadAttention/broadcast-bias incompatibility.
-    The Fixed-style or Runtime-style ORT format conversion in build_target.sh
-    is responsible for any further graph-level optimizations.
-    """
+    """Offline ORT graph optimization at ORT_ENABLE_ALL level. Hard fails."""
     import onnxruntime as ort
 
     opts = ort.SessionOptions()
-    opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_BASIC
+    opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     opts.optimized_model_filepath = str(output_path)
     ort.InferenceSession(
         str(input_path),
         sess_options=opts,
         providers=["CPUExecutionProvider"],
     )
-    print("    ORT graph opt (basic): OK")
+    print("    ORT graph opt (all): OK")
 
 
 def _step4_int8_quantize(input_path: Path, output_path: Path) -> None:

@@ -307,3 +307,46 @@ def test_step1_transformer_opt_copies_input_on_failure(monkeypatch, tmp_path, ca
     assert output_path.read_bytes() == b"test-model"
     stderr = capsys.readouterr().err
     assert "transformer opt failed" in stderr
+
+
+def test_step3_ort_graph_opt_uses_enable_all(monkeypatch, tmp_path):
+    """Offline ORT graph optimization should run at ORT_ENABLE_ALL."""
+    module = _load_module()
+
+    recorded = {}
+
+    class FakeSessionOptions:
+        def __init__(self):
+            self.graph_optimization_level = None
+            self.optimized_model_filepath = None
+
+    class FakeGraphOptimizationLevel:
+        ORT_ENABLE_ALL = "enable_all"
+
+    class FakeOrtModule:
+        SessionOptions = FakeSessionOptions
+        GraphOptimizationLevel = FakeGraphOptimizationLevel
+
+        @staticmethod
+        def InferenceSession(path, sess_options, providers):
+            recorded["path"] = path
+            recorded["graph_optimization_level"] = (
+                sess_options.graph_optimization_level
+            )
+            recorded["optimized_model_filepath"] = sess_options.optimized_model_filepath
+            recorded["providers"] = providers
+
+    import sys
+
+    monkeypatch.setitem(sys.modules, "onnxruntime", FakeOrtModule)
+
+    input_path = tmp_path / "in.onnx"
+    output_path = tmp_path / "out.onnx"
+    input_path.write_bytes(b"onnx")
+
+    module._step3_ort_graph_opt(input_path, output_path)
+
+    assert recorded["path"] == str(input_path)
+    assert recorded["graph_optimization_level"] == "enable_all"
+    assert recorded["optimized_model_filepath"] == str(output_path)
+    assert recorded["providers"] == ["CPUExecutionProvider"]
