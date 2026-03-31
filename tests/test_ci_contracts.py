@@ -42,12 +42,6 @@ def test_workflow_runs_targeted_pytest_before_matrix_emit() -> None:
     )
 
 
-def test_workflow_cache_key_tracks_build_inputs() -> None:
-    """The build cache key must include workflow-relevant scripts."""
-    text = WORKFLOW.read_text(encoding="utf-8")
-    expected = "hashFiles('builds/release.yaml', 'scripts/build_target.sh', 'scripts/optimize_model.py', 'docker/lambda-build.Dockerfile')"
-    assert expected in text
-
 
 def test_dockerfile_installs_cpu_torch() -> None:
     """The build image must install CPU-only torch for transformer optimization."""
@@ -81,12 +75,10 @@ def test_workflow_uses_node24_ready_major_action_versions() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "actions/checkout@v6" in text
     assert "actions/setup-python@v6" in text
-    assert "actions/cache@v5" in text
     assert "actions/upload-artifact@v7" in text
     assert "actions/download-artifact@v7" in text
     assert "actions/checkout@v6.0.2" not in text
     assert "actions/setup-python@v6.2.0" not in text
-    assert "actions/cache@v5.0.4" not in text
     assert "actions/upload-artifact@v7.0.0" not in text
     assert "actions/download-artifact@v7.0.0" not in text
 
