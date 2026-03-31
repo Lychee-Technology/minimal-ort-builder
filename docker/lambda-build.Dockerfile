@@ -45,22 +45,10 @@ RUN pip3 install --no-cache-dir \
         --index-url https://download.pytorch.org/whl/cpu \
         "torch==2.7.0+cpu"
 
-# ccache is not in AL2023 repos and the PyPI package has no arm64 wheel.
-# Use the musl-static build so it runs on any glibc version without linking issues.
-ARG CCACHE_VERSION=4.13.2
-RUN curl -fsSL \
-      "https://github.com/ccache/ccache/releases/download/v${CCACHE_VERSION}/ccache-${CCACHE_VERSION}-linux-aarch64-musl-static.tar.gz" \
-      -o /tmp/ccache.tar.gz \
-    && tar -xzf /tmp/ccache.tar.gz -C /tmp \
-    && mv /tmp/ccache-${CCACHE_VERSION}-linux-aarch64-musl-static/ccache /usr/local/bin/ccache \
-    && chmod +x /usr/local/bin/ccache \
-    && rm -rf /tmp/ccache.tar.gz /tmp/ccache-${CCACHE_VERSION}-linux-aarch64-musl-static
-
 # Sanity-check: all required tools must be on PATH before we ship the image.
 RUN clang --version && clang++ --version \
     && which huggingface-cli && huggingface-cli --help \
     && which hf && hf --help \
-    && which ccache && ccache --version \
     && python3 -c "import torch; import onnxruntime; from onnxruntime.transformers import optimizer; print(torch.__version__)"
 
 ENTRYPOINT ["/bin/bash"]

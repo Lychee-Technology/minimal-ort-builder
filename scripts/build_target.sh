@@ -208,8 +208,6 @@ CMAKE_EXTRA_DEFINES=(
     "CMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -flto=thin"
     "CMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -flto=thin"
     "CMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -flto=thin"
-    "CMAKE_C_COMPILER_LAUNCHER=ccache"
-    "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
 )
 
 if [ "${CPU_TUNING}" = "neoverse-n1" ]; then
