@@ -37,27 +37,12 @@ jobs:
   build:
     needs: plan
     runs-on: ubuntu-24.04-arm
-    permissions:
-      actions: write
     strategy:
       fail-fast: false
       matrix:
         target: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v6
-
-      - name: Restore ccache
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/ccache
-          # Key is based on the ORT version, target, and the files that affect
-          # the build (manifest + build script). github.sha is intentionally
-          # NOT used: ORT is a pinned third-party library, so the cache is
-          # valid across commits as long as these inputs haven't changed.
-          key: ccache-arm64-ort-${{ matrix.target.ort_version }}-${{ matrix.target.target_id }}-${{ hashFiles('builds/release.yaml', 'scripts/build_target.sh', 'scripts/optimize_model.py', 'docker/lambda-build.Dockerfile') }}
-          restore-keys: |
-            ccache-arm64-ort-${{ matrix.target.ort_version }}-${{ matrix.target.target_id }}-
-            ccache-arm64-ort-${{ matrix.target.ort_version }}-
 
       - name: Build Docker image
         run: docker build -t ort-build:local -f docker/lambda-build.Dockerfile docker/
@@ -78,12 +63,11 @@ jobs:
           MINIMAL_BUILD: ${{ matrix.target.minimal_build }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          mkdir -p ~/.cache/ccache output
+          mkdir -p output
           docker run --rm \
             -v "$(pwd)/scripts:/scripts:ro" \
             -v "$(pwd)/builds:/manifest:ro" \
             -v "$(pwd)/output:/output" \
-            -v "$HOME/.cache/ccache:/root/.cache/ccache" \
             -e TARGET_ID \
             -e ORT_VERSION \
             -e QUANT \
@@ -99,34 +83,8 @@ jobs:
             -e HF_TOKEN \
             -e OUTPUT_DIR=/output \
             -e PYTHONUNBUFFERED=1 \
-            -e CCACHE_DIR=/root/.cache/ccache \
             ort-build:local \
             /scripts/build_target.sh
-
-      - name: Show ccache stats
-        if: always()
-        run: docker run --rm -v "$HOME/.cache/ccache:/root/.cache/ccache" -e CCACHE_DIR=/root/.cache/ccache ort-build:local -c "ccache --show-stats"
-
-      - name: Prune stale ccache entries
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CURRENT_KEY: ccache-arm64-ort-${{ matrix.target.ort_version }}-${{ matrix.target.target_id }}-${{ hashFiles('builds/release.yaml', 'scripts/build_target.sh', 'scripts/optimize_model.py', 'docker/lambda-build.Dockerfile') }}
-        run: |
-          gh cache list \
-            --repo ${{ github.repository }} \
-            --key "ccache-arm64-ort-${{ matrix.target.ort_version }}-${{ matrix.target.target_id }}-" \
-            --json id,key \
-            | python3 -c "
-          import json, sys, subprocess, os
-          entries = json.load(sys.stdin)
-          current = os.environ['CURRENT_KEY']
-          for e in entries:
-              if e['key'] != current:
-                  subprocess.run(['gh', 'cache', 'delete', str(e['id']),
-                                  '--repo', '${{ github.repository }}'], check=True)
-                  print(f'Deleted stale cache: {e[\"key\"]}')
-          "
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
