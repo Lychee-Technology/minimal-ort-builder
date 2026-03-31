@@ -56,11 +56,14 @@ def test_dockerfile_keeps_onnxruntime_pinned() -> None:
     assert '"onnxruntime==1.24.4"' in text
 
 
-def test_build_script_still_patches_converter_to_basic() -> None:
-    """The build script must keep ORT conversion capped at BASIC."""
+def test_build_script_keeps_converter_at_enable_all() -> None:
+    """The build script should not downgrade ORT conversion away from ENABLE_ALL."""
     text = BUILD_SCRIPT.read_text(encoding="utf-8")
-    assert "ORT_ENABLE_BASIC" in text
     assert "ORT_ENABLE_ALL" in text
+    assert (
+        "sed -i 's/return ort.GraphOptimizationLevel.ORT_ENABLE_ALL/"
+        "return ort.GraphOptimizationLevel.ORT_ENABLE_BASIC/'"
+    ) not in text
 
 
 def test_build_script_does_not_force_max_length_shape_specialization() -> None:

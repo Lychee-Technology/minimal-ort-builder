@@ -104,15 +104,6 @@ echo "==> Cloning ORT ${ORT_VERSION}"
 git clone --depth 1 --branch "${ORT_VERSION}" \
     https://github.com/microsoft/onnxruntime.git "${ORT_SRC}"
 
-# Patch: cap graph optimization at BASIC in the ORT conversion utility.
-# The converter applies ORT_ENABLE_ALL by default, which fuses attention into
-# MultiHeadAttention — incompatible with jina-style broadcast attention_bias
-# [1,heads,1,seq_len].  BASIC limits the converter to constant folding and
-# dead-node elimination only.  The model is already fully optimized by
-# optimize_model.py; the converter only needs to serialize to .ort format.
-sed -i 's/return ort.GraphOptimizationLevel.ORT_ENABLE_ALL/return ort.GraphOptimizationLevel.ORT_ENABLE_BASIC/' \
-    "${ORT_SRC}/tools/python/util/onnx_model_utils.py"
-
 # ---------------------------------------------------------------------------
 # 7. Prepare ONNX model for ORT conversion
 # ---------------------------------------------------------------------------
@@ -151,10 +142,9 @@ cp "${OPTIMIZED_ONNX}" "${ORT_INPUT_DIR}/model.onnx"
 #    derived from the same model the smoke test will load.
 #
 #    --optimization_style Fixed: graph optimization is applied once at
-#    conversion time and frozen into the .ort file.  The patched
-#    get_optimization_level() (see step 6 above) caps the level at BASIC,
-#    so only constant folding and dead-node elimination run — no attention
-#    fusion that would introduce MultiHeadAttention.
+#    conversion time and frozen into the .ort file. optimize_model.py already
+#    emits an ORT_ENABLE_ALL-optimized ONNX, so the converter is expected to
+#    preserve that graph in .ort form rather than downgrade it.
 # ---------------------------------------------------------------------------
 echo "==> Converting ONNX to ORT format (using installed onnxruntime)"
 ORT_MODEL_DIR="${WORK_DIR}/ort_model"
@@ -179,8 +169,8 @@ echo "    ORT model: ${ORT_MODEL_PATH}"
 # 9. Generate reduced operator config (from the optimized ONNX model)
 #
 # create_reduced_build_config.py expects .onnx (protobuf) format.  The
-# Fixed-style .ort conversion above uses only BASIC optimization (see sed
-# patch in step 6), so the .ort file has the same op set as the .onnx file.
+# ORT_ENABLE_ALL-optimized ONNX generated above is the source of truth for the
+# reduced operator config that backs the converted .ort artifact.
 # ---------------------------------------------------------------------------
 echo "==> Generating reduced operator config"
 OPERATOR_CONFIG="${WORK_DIR}/operators.config"
