@@ -29,7 +29,7 @@ All build configuration lives in a single file: `builds/release.yaml`. Add or mo
 
 ```yaml
 onnxruntime:
-  version: "1.20.1"   # ORT release tag; applies to every target
+  version: "1.26.0"   # ORT release tag; applies to every target
 
 build:
   container_image: "public.ecr.aws/lambda/provided:al2023"  # base image for compilation
@@ -117,7 +117,7 @@ docker build --platform linux/arm64 \
   -f docker/lambda-build.Dockerfile .
 ```
 
-This installs the compiler toolchain, `cmake`, `ninja`, `jq`, and the Python packages needed by the build script, including `onnxruntime==1.24.4` and CPU-only `torch`. PyTorch is a build-time dependency only: it is used so `onnxruntime.transformers` can run transformer optimization during model preprocessing, but the final runtime bundle does not depend on PyTorch.
+This installs the compiler toolchain, `cmake`, `ninja`, `jq`, and the Python packages needed by the build script, including `onnxruntime==1.26.0` and CPU-only `torch`. PyTorch is a build-time dependency only: it is used so `onnxruntime.transformers` can run transformer optimization during model preprocessing, but the final runtime bundle does not depend on PyTorch.
 
 ### Step 2 — run a single target
 
@@ -131,7 +131,7 @@ docker run --rm \
   -v "$(pwd)/builds:/manifest:ro" \
   -v "$(pwd)/output:/output" \
   -e TARGET_ID=phi3-mini-q4f16 \
-  -e ORT_VERSION=1.20.1 \
+  -e ORT_VERSION=1.26.0 \
   -e QUANT=q4f16 \
   -e HF_REPO_ID=microsoft/Phi-3-mini-4k-instruct-onnx \
   -e HF_REVISION=main \

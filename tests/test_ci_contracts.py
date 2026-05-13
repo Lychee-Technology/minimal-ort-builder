@@ -53,7 +53,7 @@ def test_dockerfile_installs_cpu_torch() -> None:
 def test_dockerfile_keeps_onnxruntime_pinned() -> None:
     """Torch support must not loosen the onnxruntime version pin."""
     text = DOCKERFILE.read_text(encoding="utf-8")
-    assert '"onnxruntime==1.24.4"' in text
+    assert '"onnxruntime==1.26.0"' in text
 
 
 def test_build_script_keeps_converter_at_enable_all() -> None:
