@@ -39,7 +39,7 @@ RUN pip3 install --no-cache-dir \
         packaging \
         onnx \
         flatbuffers \
-        "onnxruntime==1.26.0"
+        "onnxruntime==1.27.0"
 
 RUN pip3 install --no-cache-dir \
         --index-url https://download.pytorch.org/whl/cpu \

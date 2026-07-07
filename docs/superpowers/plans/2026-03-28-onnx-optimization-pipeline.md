@@ -6,7 +6,7 @@
 
 **Architecture:** A new `scripts/optimize_model.py` is called as step 7 in `build_target.sh`, taking the raw `onnx/model.onnx` and producing an optimized+quantized ONNX that all downstream steps consume. `validate_manifest.py` is extended to accept `model_type` in metadata. `builds/release.yaml` is updated to point at the unquantized base model.
 
-**Tech Stack:** Python 3.11, `onnxruntime==1.26.0` (already installed in Docker), `onnx` (already installed), `pytest` for tests.
+**Tech Stack:** Python 3.11, `onnxruntime==1.27.0` (already installed in Docker), `onnx` (already installed), `pytest` for tests.
 
 ## Implementation Status Note
 
