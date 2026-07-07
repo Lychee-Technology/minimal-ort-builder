@@ -1007,3 +1007,68 @@ def test_metadata_model_type_non_string_rejected():
     result = _run(stdin_text=manifest)
     assert result.returncode != 0
     assert "model_type" in result.stderr.lower()
+
+
+# ---------------------------------------------------------------------------
+# correctness metadata block — validation tests
+# ---------------------------------------------------------------------------
+
+
+import importlib.util
+from pathlib import Path
+
+import pytest
+import yaml
+
+_VM = Path(__file__).parent.parent / "scripts" / "validate_manifest.py"
+
+
+def _vm():
+    spec = importlib.util.spec_from_file_location("validate_manifest", _VM)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_MANIFEST_WITH_CORRECTNESS = """
+onnxruntime:
+  version: "1.27.0"
+build:
+  container_image: x
+  target_os: linux
+  target_arch: arm64
+  cpu_tuning: neoverse-n1
+  execution_provider: cpu
+  minimal_build: extended
+targets:
+  - id: t
+    quant: q4f16
+    metadata:
+      correctness:
+        cosine_threshold: 0.99
+        num_samples: 3
+        max_tokens: 128
+    model:
+      repo_id: r
+      revision: main
+      primary: onnx/model.onnx
+      companions: []
+"""
+
+
+def test_valid_correctness_block_passes():
+    _vm().validate(yaml.safe_load(_MANIFEST_WITH_CORRECTNESS))
+
+
+def test_correctness_threshold_must_be_number():
+    data = yaml.safe_load(_MANIFEST_WITH_CORRECTNESS)
+    data["targets"][0]["metadata"]["correctness"]["cosine_threshold"] = "high"
+    with pytest.raises(SystemExit):
+        _vm().validate(data)
+
+
+def test_correctness_num_samples_must_be_positive():
+    data = yaml.safe_load(_MANIFEST_WITH_CORRECTNESS)
+    data["targets"][0]["metadata"]["correctness"]["num_samples"] = 0
+    with pytest.raises(SystemExit):
+        _vm().validate(data)
