@@ -11,8 +11,6 @@ shipped minimal .so/.ort and compares outputs by cosine similarity.
 import argparse
 import json
 import struct
-import sys
-from pathlib import Path
 
 import numpy as np
 
@@ -43,6 +41,12 @@ def build_feeds(input_names, ids):
             feeds[name] = np.ones((1, length), dtype=np.int64)
         elif name == "token_type_ids":
             feeds[name] = np.zeros((1, length), dtype=np.int64)
+    unknown = [n for n in input_names if n not in KNOWN_INPUTS]
+    if unknown:
+        raise ValueError(
+            f"gen_reference_vectors: unhandled model input(s) {unknown}; "
+            f"build_feeds only knows {list(KNOWN_INPUTS)}"
+        )
     return feeds
 
 

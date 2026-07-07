@@ -6,6 +6,7 @@ import types
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 SCRIPT = Path(__file__).parent.parent / "scripts" / "gen_reference_vectors.py"
 
@@ -38,6 +39,12 @@ def test_build_feeds_omits_token_type_ids_when_absent():
     module = _load_module()
     feeds = module.build_feeds(["input_ids", "attention_mask"], [5, 6])
     assert set(feeds) == {"input_ids", "attention_mask"}
+
+
+def test_build_feeds_raises_on_unknown_input():
+    module = _load_module()
+    with pytest.raises(ValueError):
+        module.build_feeds(["input_ids", "attention_mask", "position_ids"], [5, 6, 7])
 
 
 def test_write_read_vectors_roundtrip(tmp_path):
