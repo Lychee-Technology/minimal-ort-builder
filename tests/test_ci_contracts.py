@@ -119,3 +119,9 @@ def test_build_script_skips_only_step4_for_prequantized_primary() -> None:
     assert 'Using pre-quantized ONNX model directly' not in text
     assert '--skip-int8-quantize' in text
     assert 'python3 "$(dirname "$0")/optimize_model.py"' in text
+
+
+def test_dockerfile_installs_tokenizers() -> None:
+    """The build image must install the tokenizers library for correctness vectors."""
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    assert "tokenizers" in text
