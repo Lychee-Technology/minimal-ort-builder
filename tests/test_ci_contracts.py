@@ -11,6 +11,12 @@ DOCKERFILE = ROOT / "docker" / "lambda-build.Dockerfile"
 
 RELEASE_MANIFEST = ROOT / "builds" / "release.yaml"
 
+BENCH_WORKFLOW = ROOT / ".github" / "workflows" / "benchmark.yml"
+BENCH_C = ROOT / "scripts" / "bench.c"
+RUN_BENCH = ROOT / "scripts" / "run_benchmark.py"
+RENDER_REPORT = ROOT / "scripts" / "render_benchmark_report.py"
+GEN_VECTORS = ROOT / "scripts" / "gen_reference_vectors.py"
+
 
 def test_build_script_uses_fixed_ort_conversion() -> None:
     """CI must convert optimized ONNX to a single fixed ORT artifact."""
@@ -179,3 +185,69 @@ def test_build_script_passes_correctness_defaults() -> None:
 def test_build_script_links_libm_for_smoke_test() -> None:
     text = BUILD_SCRIPT.read_text(encoding="utf-8")
     assert "-lm" in text
+
+
+# ---------------------------------------------------------------------------
+# Benchmark workflow contracts (issue #23)
+# ---------------------------------------------------------------------------
+
+
+def test_benchmark_workflow_is_dispatch_only_on_native_arm() -> None:
+    """The benchmark workflow must be manual and run on the native ARM64 runner."""
+    text = BENCH_WORKFLOW.read_text(encoding="utf-8")
+    assert "workflow_dispatch:" in text
+    assert "push:" not in text
+    assert "runs-on: ubuntu-24.04-arm" in text
+
+
+def test_benchmark_workflow_pins_node24_ready_major_action_versions() -> None:
+    text = BENCH_WORKFLOW.read_text(encoding="utf-8")
+    assert "actions/checkout@v6" in text
+    assert "actions/setup-python@v6" in text
+    assert "actions/upload-artifact@v7" in text
+    assert "actions/download-artifact@v7" in text
+
+
+def test_benchmark_workflow_mounts_fixtures_dir() -> None:
+    text = BENCH_WORKFLOW.read_text(encoding="utf-8")
+    assert "tests/data:/fixtures:ro" in text
+    assert "FIXTURE_DIR=/fixtures" in text
+
+
+def test_benchmark_workflow_runs_orchestrator_and_report() -> None:
+    text = BENCH_WORKFLOW.read_text(encoding="utf-8")
+    assert "/scripts/run_benchmark.py" in text
+    assert "render_benchmark_report.py" in text
+
+
+def test_bench_c_disables_runtime_graph_optimization() -> None:
+    text = BENCH_C.read_text(encoding="utf-8")
+    assert "ORT_DISABLE_ALL" in text
+
+
+def test_bench_c_reads_tvb1_format() -> None:
+    text = BENCH_C.read_text(encoding="utf-8")
+    assert "TVB1" in text
+
+
+def test_bench_c_pins_single_thread_batch_one() -> None:
+    """Latency must be measured single-threaded (Lambda profile)."""
+    text = BENCH_C.read_text(encoding="utf-8")
+    assert "SetIntraOpNumThreads" in text
+    assert "SetInterOpNumThreads" in text
+
+
+def test_run_benchmark_links_libm() -> None:
+    text = RUN_BENCH.read_text(encoding="utf-8")
+    assert "-lm" in text
+
+
+def test_render_report_emits_summary_and_results_json() -> None:
+    text = RENDER_REPORT.read_text(encoding="utf-8")
+    assert "GITHUB_STEP_SUMMARY" in text
+    assert "results.json" in text
+
+
+def test_gen_reference_vectors_supports_inputs_only() -> None:
+    text = GEN_VECTORS.read_text(encoding="utf-8")
+    assert "--inputs-only" in text

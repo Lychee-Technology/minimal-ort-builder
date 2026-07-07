@@ -40,3 +40,54 @@ targets:
       companions:
         - onnx/model_q4f16.onnx_data
         - tokenizer.json
+
+  # Additional quants of the same model. The manifest keys uniqueness on
+  # (id, quant), so these share the id above and differ only in quant/primary.
+  # All are pre-quantized from HF (non-int8/q8 labels), so none trigger the
+  # pipeline int8 step. Primarily consumed by the benchmark workflow to compare
+  # quantization schemes side by side.
+  - id: jinaai/jina-embeddings-v5-text-nano-retrieval
+    quant: fp16
+    bundle_extras:
+      - tokenizer.json
+      - build-info.json
+    metadata:
+      model_format: ort
+      model_type: bert
+      pooling: last_token
+      input_kind: retrieval
+      query_prefix: "Query: "
+      document_prefix: "Document: "
+      raw_embedding_dimension: 768
+      output_embedding_dimension: 768
+      max_length: 8192
+    model:
+      repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
+      revision: main
+      primary: onnx/model_fp16.onnx
+      companions:
+        - onnx/model_fp16.onnx_data
+        - tokenizer.json
+
+  - id: jinaai/jina-embeddings-v5-text-nano-retrieval
+    quant: q4
+    bundle_extras:
+      - tokenizer.json
+      - build-info.json
+    metadata:
+      model_format: ort
+      model_type: bert
+      pooling: last_token
+      input_kind: retrieval
+      query_prefix: "Query: "
+      document_prefix: "Document: "
+      raw_embedding_dimension: 768
+      output_embedding_dimension: 768
+      max_length: 8192
+    model:
+      repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
+      revision: main
+      primary: onnx/model_q4.onnx
+      companions:
+        - onnx/model_q4.onnx_data
+        - tokenizer.json

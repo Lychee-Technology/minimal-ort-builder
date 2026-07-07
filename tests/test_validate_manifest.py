@@ -89,6 +89,40 @@ def test_duplicate_ids_fail():
     assert "duplicate" in result.stderr.lower()
 
 
+def test_same_id_different_quant_is_valid():
+    """The same model id may appear with different quants (uniqueness is on
+    (id, quant), enabling quant-comparison manifests)."""
+    manifest = textwrap.dedent("""\
+        onnxruntime:
+          version: "1.26.0"
+        build:
+          container_image: public.ecr.aws/lambda/provided:al2023
+          target_os: linux
+          target_arch: arm64
+          cpu_tuning: neoverse-n1
+          execution_provider: cpu
+          minimal_build: extended
+        targets:
+          - id: model-a
+            quant: q4f16
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model_q4f16.onnx
+              companions: []
+          - id: model-a
+            quant: fp16
+            model:
+              repo_id: org/repo
+              revision: main
+              primary: onnx/model_fp16.onnx
+              companions: []
+    """)
+    result = _run(stdin_text=manifest)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert "OK" in result.stdout
+
+
 def test_primary_in_companions_fails():
     manifest = textwrap.dedent("""\
         onnxruntime:

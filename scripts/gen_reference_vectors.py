@@ -133,12 +133,23 @@ def main(argv=None):
     parser.add_argument("--output", required=True, help="Output .tvbin path")
     parser.add_argument("--num-samples", type=int, default=3)
     parser.add_argument("--max-tokens", type=int, default=128)
+    parser.add_argument(
+        "--inputs-only",
+        action="store_true",
+        help="Emit token feeds with an empty reference payload (ref_count=0); "
+        "skips reference output computation. Used by the benchmark harness, "
+        "which times Run() and ignores the reference.",
+    )
     args = parser.parse_args(argv)
 
     import onnxruntime as ort
     from tokenizers import Tokenizer
 
     tokenizer = Tokenizer.from_file(args.tokenizer)
+    # The session is still needed to learn which inputs the model declares so
+    # build_feeds produces exactly those; only the reference Run() is skipped
+    # under --inputs-only. The model may be a .ort artifact, which onnxruntime
+    # loads the same as .onnx.
     session = ort.InferenceSession(args.model, providers=["CPUExecutionProvider"])
     input_names = [i.name for i in session.get_inputs()]
     output_name = session.get_outputs()[0].name
@@ -148,12 +159,16 @@ def main(argv=None):
     for text in texts:
         ids = truncate_ids(tokenizer.encode(text).ids, args.max_tokens)
         feeds = build_feeds(input_names, ids)
-        output = session.run([output_name], feeds)[0]
-        reference = np.asarray(output, dtype=np.float32).reshape(-1)
+        if args.inputs_only:
+            reference = np.empty(0, dtype=np.float32)
+        else:
+            output = session.run([output_name], feeds)[0]
+            reference = np.asarray(output, dtype=np.float32).reshape(-1)
         samples.append({"inputs": feeds, "reference": reference})
 
     write_vectors(args.output, samples)
-    print(f"    wrote {len(samples)} reference sample(s) to {args.output}")
+    kind = "input-only" if args.inputs_only else "reference"
+    print(f"    wrote {len(samples)} {kind} sample(s) to {args.output}")
 
 
 if __name__ == "__main__":
