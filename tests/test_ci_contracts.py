@@ -140,3 +140,21 @@ def test_smoke_test_keeps_zero_fill_mode() -> None:
     text = SMOKE_TEST.read_text(encoding="utf-8")
     assert "run_zerofill" in text
     assert "run_comparison" in text
+
+
+def test_build_script_generates_reference_vectors() -> None:
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    assert "gen_reference_vectors.py" in text
+    assert "--reference-output" in text
+
+
+def test_build_script_passes_correctness_defaults() -> None:
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    assert ".correctness.cosine_threshold // 0.99" in text
+    assert ".correctness.num_samples // 3" in text
+    assert ".correctness.max_tokens // 128" in text
+
+
+def test_build_script_links_libm_for_smoke_test() -> None:
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    assert "-lm" in text
