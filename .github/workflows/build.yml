@@ -20,13 +20,13 @@ jobs:
           python-version: "3.12"
 
       - name: Install tooling deps
-        run: pip install pyyaml pytest
+        run: pip install pyyaml pytest numpy
 
       - name: Validate manifest
         run: python scripts/validate_manifest.py builds/release.yaml
 
       - name: Run regression tests
-        run: pytest tests/test_validate_manifest.py tests/test_optimize_model.py tests/test_ci_contracts.py -q
+        run: pytest tests/test_validate_manifest.py tests/test_optimize_model.py tests/test_ci_contracts.py tests/test_gen_reference_vectors.py -q
 
       - name: Emit matrix
         id: emit
@@ -67,6 +67,7 @@ jobs:
           docker run --rm \
             -v "$(pwd)/scripts:/scripts:ro" \
             -v "$(pwd)/builds:/manifest:ro" \
+            -v "$(pwd)/tests/data:/fixtures:ro" \
             -v "$(pwd)/output:/output" \
             -e TARGET_ID \
             -e ORT_VERSION \
@@ -81,6 +82,7 @@ jobs:
             -e EXECUTION_PROVIDER \
             -e MINIMAL_BUILD \
             -e HF_TOKEN \
+            -e FIXTURE_DIR=/fixtures \
             -e OUTPUT_DIR=/output \
             -e PYTHONUNBUFFERED=1 \
             ort-build:local \

@@ -37,10 +37,25 @@ def test_workflow_runs_targeted_pytest_before_matrix_emit() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "- name: Run regression tests" in text
     assert (
-        "pytest tests/test_validate_manifest.py tests/test_optimize_model.py tests/test_ci_contracts.py -q"
+        "pytest tests/test_validate_manifest.py tests/test_optimize_model.py "
+        "tests/test_ci_contracts.py tests/test_gen_reference_vectors.py -q"
         in text
     )
 
+
+def test_workflow_mounts_fixtures_dir() -> None:
+    """The build container must mount the fixtures dir and expose FIXTURE_DIR."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "tests/data:/fixtures:ro" in text
+    assert "FIXTURE_DIR=/fixtures" in text
+
+
+def test_workflow_installs_numpy_for_tests() -> None:
+    """The plan job must install numpy so reference-vector tests can import it."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "pip install" in text
+    line = next(l for l in text.splitlines() if "pip install" in l)
+    assert "numpy" in line
 
 
 def test_dockerfile_installs_cpu_torch() -> None:
