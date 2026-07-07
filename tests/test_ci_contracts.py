@@ -125,3 +125,18 @@ def test_dockerfile_installs_tokenizers() -> None:
     """The build image must install the tokenizers library for correctness vectors."""
     text = DOCKERFILE.read_text(encoding="utf-8")
     assert "tokenizers" in text
+
+
+def test_smoke_test_has_cosine_similarity_gate() -> None:
+    """Smoke test must compare outputs by cosine similarity against a threshold."""
+    text = SMOKE_TEST.read_text(encoding="utf-8")
+    assert "cosine" in text
+    assert "threshold" in text
+    assert "TVB1" in text
+
+
+def test_smoke_test_keeps_zero_fill_mode() -> None:
+    """The single-arg zero-fill path must still exist for debugging."""
+    text = SMOKE_TEST.read_text(encoding="utf-8")
+    assert "run_zerofill" in text
+    assert "run_comparison" in text
