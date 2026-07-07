@@ -6,7 +6,7 @@
 
 **Architecture:** A new `scripts/optimize_model.py` is called as step 7 in `build_target.sh`, taking the raw `onnx/model.onnx` and producing an optimized+quantized ONNX that all downstream steps consume. `validate_manifest.py` is extended to accept `model_type` in metadata. `builds/release.yaml` is updated to point at the unquantized base model.
 
-**Tech Stack:** Python 3.11, `onnxruntime==1.24.4` (already installed in Docker), `onnx` (already installed), `pytest` for tests.
+**Tech Stack:** Python 3.11, `onnxruntime==1.27.0` (already installed in Docker), `onnx` (already installed), `pytest` for tests.
 
 ## Implementation Status Note
 
@@ -47,7 +47,7 @@ def test_metadata_model_type_string_accepted():
     """model_type: bert must be accepted as a string metadata field."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -75,7 +75,7 @@ def test_metadata_model_type_non_string_rejected():
     """model_type: 42 (integer) must be rejected."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux

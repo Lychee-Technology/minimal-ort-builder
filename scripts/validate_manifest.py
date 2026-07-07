@@ -182,6 +182,28 @@ def validate(data: dict) -> None:
                             f"{ctx}.metadata: '{key}' must be a positive integer, got {val}"
                         )
 
+            correctness = metadata.get("correctness")
+            if correctness is not None:
+                if not isinstance(correctness, dict):
+                    _fail(f"{ctx}.metadata: 'correctness' must be a mapping")
+                ct = correctness.get("cosine_threshold")
+                if ct is not None:
+                    if isinstance(ct, bool) or not isinstance(ct, (int, float)):
+                        _fail(
+                            f"{ctx}.metadata.correctness: 'cosine_threshold' must be a number"
+                        )
+                    if not (0.0 < ct <= 1.0):
+                        _fail(
+                            f"{ctx}.metadata.correctness: 'cosine_threshold' must be in (0, 1]"
+                        )
+                for key in ("num_samples", "max_tokens"):
+                    v = correctness.get(key)
+                    if v is not None:
+                        if isinstance(v, bool) or not isinstance(v, int) or v <= 0:
+                            _fail(
+                                f"{ctx}.metadata.correctness: '{key}' must be a positive integer"
+                            )
+
 
 def main() -> None:
     if len(sys.argv) != 2:

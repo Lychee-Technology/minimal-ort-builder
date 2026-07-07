@@ -20,6 +20,7 @@ CPU_TUNING="${CPU_TUNING:-neoverse-n1}"
 EXECUTION_PROVIDER="${EXECUTION_PROVIDER:-cpu}"
 MINIMAL_BUILD="${MINIMAL_BUILD:-extended}"  # "basic" breaks CPU EP runtime partitioning; "extended" is the minimum viable level
 OUTPUT_DIR="${OUTPUT_DIR:-/output}"
+FIXTURE_DIR="${FIXTURE_DIR:-/fixtures}"
 
 echo "==> Configuration"
 echo "    TARGET_ID          = ${TARGET_ID}"
@@ -109,6 +110,10 @@ git clone --depth 1 --branch "${ORT_VERSION}" \
 # ---------------------------------------------------------------------------
 OPTIMIZED_ONNX="${WORK_DIR}/optimized.onnx"
 MODEL_TYPE="$(echo "${MODEL_METADATA}" | jq -r '.model_type // "bert"')"
+REFERENCE_ONNX="${WORK_DIR}/reference.onnx"
+COSINE_THRESHOLD="$(echo "${MODEL_METADATA}" | jq -r '.correctness.cosine_threshold // 0.99')"
+NUM_SAMPLES="$(echo "${MODEL_METADATA}" | jq -r '.correctness.num_samples // 3')"
+MAX_TOKENS="$(echo "${MODEL_METADATA}" | jq -r '.correctness.max_tokens // 128')"
 case "$(uname -m)" in
     aarch64|arm*) ORT_TARGET_PLATFORM="arm" ;;
     *)            ORT_TARGET_PLATFORM="amd64" ;;
@@ -126,6 +131,7 @@ python3 "$(dirname "$0")/optimize_model.py" \
     --model_type "${MODEL_TYPE}" \
     --target_platform "${ORT_TARGET_PLATFORM}" \
     --work_dir "${OPT_WORK_DIR}" \
+    --reference-output "${REFERENCE_ONNX}" \
     "${OPTIMIZE_EXTRA_ARGS[@]}"
 # NOTE: ORT_TARGET_PLATFORM is set here and reused by step 11 (convert_onnx_models_to_ort.py).
 # The variable must remain in scope for the rest of the script (no subshells between steps).
@@ -289,10 +295,28 @@ clang -o "${SMOKE_BIN}" "${SMOKE_SRC}" \
     -I "${ORT_SRC}/include/onnxruntime/core/session" \
     -L "$(dirname "${BUILT_SO}")" \
     -lonnxruntime \
+    -lm \
     -Wl,-rpath,"$(dirname "${BUILT_SO}")"
 
+TOKENIZER_JSON="${MODEL_DIR}/tokenizer.json"
+SMOKE_ARGS=("${ORT_MODEL_PATH}")
+if [ -f "${TOKENIZER_JSON}" ]; then
+    echo "==> Generating correctness reference vectors"
+    TV_FILE="${WORK_DIR}/reference_vectors.tvbin"
+    python3 "$(dirname "$0")/gen_reference_vectors.py" \
+        --model "${REFERENCE_ONNX}" \
+        --tokenizer "${TOKENIZER_JSON}" \
+        --fixture "${FIXTURE_DIR}/jane-austen_pride-and-prejudice.jsonl" \
+        --output "${TV_FILE}" \
+        --num-samples "${NUM_SAMPLES}" \
+        --max-tokens "${MAX_TOKENS}"
+    SMOKE_ARGS=("${ORT_MODEL_PATH}" "${TV_FILE}" "${COSINE_THRESHOLD}")
+else
+    echo "    tokenizer.json not present; running zero-fill smoke only"
+fi
+
 set +e
-"${SMOKE_BIN}" "${ORT_MODEL_PATH}" 2>&1 | tee "${SMOKE_LOG}"
+"${SMOKE_BIN}" "${SMOKE_ARGS[@]}" 2>&1 | tee "${SMOKE_LOG}"
 SMOKE_EXIT=${PIPESTATUS[0]}
 set -e
 

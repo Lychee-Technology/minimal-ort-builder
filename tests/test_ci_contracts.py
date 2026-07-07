@@ -37,10 +37,25 @@ def test_workflow_runs_targeted_pytest_before_matrix_emit() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "- name: Run regression tests" in text
     assert (
-        "pytest tests/test_validate_manifest.py tests/test_optimize_model.py tests/test_ci_contracts.py -q"
+        "pytest tests/test_validate_manifest.py tests/test_optimize_model.py "
+        "tests/test_ci_contracts.py tests/test_gen_reference_vectors.py -q"
         in text
     )
 
+
+def test_workflow_mounts_fixtures_dir() -> None:
+    """The build container must mount the fixtures dir and expose FIXTURE_DIR."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "tests/data:/fixtures:ro" in text
+    assert "FIXTURE_DIR=/fixtures" in text
+
+
+def test_workflow_installs_numpy_for_tests() -> None:
+    """The plan job must install numpy so reference-vector tests can import it."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "pip install" in text
+    line = next(l for l in text.splitlines() if "pip install" in l)
+    assert "numpy" in line
 
 
 def test_dockerfile_installs_cpu_torch() -> None:
@@ -53,7 +68,7 @@ def test_dockerfile_installs_cpu_torch() -> None:
 def test_dockerfile_keeps_onnxruntime_pinned() -> None:
     """Torch support must not loosen the onnxruntime version pin."""
     text = DOCKERFILE.read_text(encoding="utf-8")
-    assert '"onnxruntime==1.24.4"' in text
+    assert '"onnxruntime==1.27.0"' in text
 
 
 def test_build_script_keeps_converter_at_enable_all() -> None:
@@ -119,3 +134,42 @@ def test_build_script_skips_only_step4_for_prequantized_primary() -> None:
     assert 'Using pre-quantized ONNX model directly' not in text
     assert '--skip-int8-quantize' in text
     assert 'python3 "$(dirname "$0")/optimize_model.py"' in text
+
+
+def test_dockerfile_installs_tokenizers() -> None:
+    """The build image must install the tokenizers library for correctness vectors."""
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    assert "tokenizers" in text
+
+
+def test_smoke_test_has_cosine_similarity_gate() -> None:
+    """Smoke test must compare outputs by cosine similarity against a threshold."""
+    text = SMOKE_TEST.read_text(encoding="utf-8")
+    assert "cosine" in text
+    assert "threshold" in text
+    assert "TVB1" in text
+
+
+def test_smoke_test_keeps_zero_fill_mode() -> None:
+    """The single-arg zero-fill path must still exist for debugging."""
+    text = SMOKE_TEST.read_text(encoding="utf-8")
+    assert "run_zerofill" in text
+    assert "run_comparison" in text
+
+
+def test_build_script_generates_reference_vectors() -> None:
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    assert "gen_reference_vectors.py" in text
+    assert "--reference-output" in text
+
+
+def test_build_script_passes_correctness_defaults() -> None:
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    assert ".correctness.cosine_threshold // 0.99" in text
+    assert ".correctness.num_samples // 3" in text
+    assert ".correctness.max_tokens // 128" in text
+
+
+def test_build_script_links_libm_for_smoke_test() -> None:
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    assert "-lm" in text

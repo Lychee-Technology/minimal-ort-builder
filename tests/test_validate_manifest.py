@@ -11,7 +11,7 @@ EMIT_SCRIPT = Path(__file__).parent.parent / "scripts" / "emit_matrix.py"
 
 VALID_MANIFEST = textwrap.dedent("""\
     onnxruntime:
-      version: "1.20.1"
+      version: "1.26.0"
     build:
       container_image: public.ecr.aws/lambda/provided:al2023
       target_os: linux
@@ -60,7 +60,7 @@ def test_manifest_without_release_is_valid():
 def test_duplicate_ids_fail():
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -92,7 +92,7 @@ def test_duplicate_ids_fail():
 def test_primary_in_companions_fails():
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -118,7 +118,7 @@ def test_primary_in_companions_fails():
 def test_absolute_path_fails():
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -143,7 +143,7 @@ def test_absolute_path_fails():
 def test_dotdot_path_fails():
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -199,7 +199,7 @@ def test_companions_not_a_list_fails():
     """companions: oops (a string) must be rejected, not silently mis-handled."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -226,7 +226,7 @@ def test_primary_non_string_path_fails():
     """primary: 42 (an integer) must be rejected cleanly, not crash."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -273,7 +273,7 @@ def test_emit_matrix_companions_space_joined():
     """companions list should be joined with spaces into a single string."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -303,7 +303,7 @@ def test_emit_matrix_multi_target():
     """A manifest with two targets produces a 2-entry list with correct target_ids."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -340,7 +340,7 @@ def test_emit_matrix_companions_null():
     """companions: null (YAML scalar) should produce hf_companions == ""."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -373,7 +373,7 @@ def test_missing_quant_fails():
     """Each target must have a 'quant' field — omitting it should be rejected."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -398,7 +398,7 @@ def test_invalid_quant_format_fails():
     """quant value with a space must be rejected (must match ^[a-z0-9][a-z0-9\\-]*$)."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -425,7 +425,7 @@ def test_valid_quant_formats_accepted():
     for quant in ("fp32", "q4f16", "int8", "q8-0"):
         manifest = textwrap.dedent(f"""\
             onnxruntime:
-              version: "1.20.1"
+              version: "1.26.0"
             build:
               container_image: public.ecr.aws/lambda/provided:al2023
               target_os: linux
@@ -471,7 +471,7 @@ def test_emit_matrix_single_target():
     assert len(matrix) == 1
     entry = matrix[0]
     assert entry["target_id"] == "model-a"
-    assert entry["ort_version"] == "1.20.1"
+    assert entry["ort_version"] == "1.26.0"
     assert entry["hf_repo_id"] == "org/repo"
     assert entry["hf_primary"] == "onnx/model.onnx"
     assert entry["hf_companions"] == ""
@@ -498,7 +498,7 @@ def test_bundle_extras_valid_list_accepted():
     """A bundle_extras list of plain filenames at target level must be accepted."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -526,7 +526,7 @@ def test_bundle_extras_not_a_list_fails():
     """bundle_extras: a-string (not a list) at target level must be rejected."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -553,7 +553,7 @@ def test_bundle_extras_with_path_separator_fails():
     """bundle_extras entry at target level containing '/' must be rejected (no subdirectory paths)."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -581,7 +581,7 @@ def test_bundle_extras_with_leading_dot_fails():
     """bundle_extras entry at target level starting with '.' must be rejected."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -614,7 +614,7 @@ def test_emit_matrix_bundle_extras_space_joined():
     """bundle_extras list at target level should be joined with spaces into a single string."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -659,7 +659,7 @@ def test_bundle_extras_at_build_level_rejected():
     """bundle_extras under build: is now an unknown key and must be rejected."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -689,7 +689,7 @@ def test_bundle_extras_per_target_valid():
     """bundle_extras at target level (plain filenames) must be accepted."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -717,7 +717,7 @@ def test_bundle_extras_per_target_with_path_separator_fails():
     """bundle_extras entry at target level containing '/' must be rejected."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -751,7 +751,7 @@ def test_emit_matrix_bundle_extras_from_target():
     """bundle_extras at target level must be space-joined and emitted."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -782,7 +782,7 @@ def test_emit_matrix_bundle_extras_not_from_build():
     """bundle_extras under build: must NOT be emitted (it's now a per-target field)."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -813,7 +813,7 @@ def test_emit_matrix_bundle_extras_not_from_build():
 
 VALID_MANIFEST_WITH_METADATA = textwrap.dedent("""\
     onnxruntime:
-      version: "1.20.1"
+      version: "1.26.0"
     build:
       container_image: public.ecr.aws/lambda/provided:al2023
       target_os: linux
@@ -857,7 +857,7 @@ def test_metadata_raw_embedding_dimension_must_be_int():
     """raw_embedding_dimension must be a positive integer."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -892,7 +892,7 @@ def test_metadata_max_length_must_be_positive():
     """max_length must be a positive integer."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -956,7 +956,7 @@ def test_metadata_model_type_string_accepted():
     """model_type: bert must be accepted as a string metadata field."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -984,7 +984,7 @@ def test_metadata_model_type_non_string_rejected():
     """model_type: 42 (integer) must be rejected."""
     manifest = textwrap.dedent("""\
         onnxruntime:
-          version: "1.20.1"
+          version: "1.26.0"
         build:
           container_image: public.ecr.aws/lambda/provided:al2023
           target_os: linux
@@ -1007,3 +1007,68 @@ def test_metadata_model_type_non_string_rejected():
     result = _run(stdin_text=manifest)
     assert result.returncode != 0
     assert "model_type" in result.stderr.lower()
+
+
+# ---------------------------------------------------------------------------
+# correctness metadata block — validation tests
+# ---------------------------------------------------------------------------
+
+
+import importlib.util
+from pathlib import Path
+
+import pytest
+import yaml
+
+_VM = Path(__file__).parent.parent / "scripts" / "validate_manifest.py"
+
+
+def _vm():
+    spec = importlib.util.spec_from_file_location("validate_manifest", _VM)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_MANIFEST_WITH_CORRECTNESS = """
+onnxruntime:
+  version: "1.27.0"
+build:
+  container_image: x
+  target_os: linux
+  target_arch: arm64
+  cpu_tuning: neoverse-n1
+  execution_provider: cpu
+  minimal_build: extended
+targets:
+  - id: t
+    quant: q4f16
+    metadata:
+      correctness:
+        cosine_threshold: 0.99
+        num_samples: 3
+        max_tokens: 128
+    model:
+      repo_id: r
+      revision: main
+      primary: onnx/model.onnx
+      companions: []
+"""
+
+
+def test_valid_correctness_block_passes():
+    _vm().validate(yaml.safe_load(_MANIFEST_WITH_CORRECTNESS))
+
+
+def test_correctness_threshold_must_be_number():
+    data = yaml.safe_load(_MANIFEST_WITH_CORRECTNESS)
+    data["targets"][0]["metadata"]["correctness"]["cosine_threshold"] = "high"
+    with pytest.raises(SystemExit):
+        _vm().validate(data)
+
+
+def test_correctness_num_samples_must_be_positive():
+    data = yaml.safe_load(_MANIFEST_WITH_CORRECTNESS)
+    data["targets"][0]["metadata"]["correctness"]["num_samples"] = 0
+    with pytest.raises(SystemExit):
+        _vm().validate(data)

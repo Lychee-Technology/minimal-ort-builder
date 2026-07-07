@@ -143,7 +143,7 @@ targets:
 
 ## Docker Dependencies
 
-The build container installs `onnx`, `onnxruntime==1.24.4`, and CPU-only `torch`. `torch` is required only at build time so `onnxruntime.transformers.optimizer.optimize_model()` can run for BERT-family models; the final runtime artifact does not depend on PyTorch.
+The build container installs `onnx`, `onnxruntime==1.27.0`, and CPU-only `torch`. `torch` is required only at build time so `onnxruntime.transformers.optimizer.optimize_model()` can run for BERT-family models; the final runtime artifact does not depend on PyTorch.
 
 ## Error Handling
 

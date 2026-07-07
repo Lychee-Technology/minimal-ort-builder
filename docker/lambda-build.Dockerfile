@@ -39,7 +39,8 @@ RUN pip3 install --no-cache-dir \
         packaging \
         onnx \
         flatbuffers \
-        "onnxruntime==1.24.4"
+        tokenizers \
+        "onnxruntime==1.27.0"
 
 RUN pip3 install --no-cache-dir \
         --index-url https://download.pytorch.org/whl/cpu \
@@ -49,6 +50,6 @@ RUN pip3 install --no-cache-dir \
 RUN clang --version && clang++ --version \
     && which huggingface-cli && huggingface-cli --help \
     && which hf && hf --help \
-    && python3 -c "import torch; import onnxruntime; from onnxruntime.transformers import optimizer; print(torch.__version__)"
+    && python3 -c "import torch; import onnxruntime; import tokenizers; from onnxruntime.transformers import optimizer; print(torch.__version__)"
 
 ENTRYPOINT ["/bin/bash"]
