@@ -133,11 +133,13 @@ Absent block → code defaults. `validate_manifest.py` accepts the block as opti
   `-v "$(pwd)/tests/data:/fixtures:ro"` to the `docker run` invocation and pass the
   in-container fixture path to `build_target.sh` (via env, e.g. `FIXTURE_DIR`).
   Keeps the committed fixture as the single source of truth.
-- **`build_target.sh`**: after ORT conversion, call `optimize_model.py` with
-  `--reference-output`, then `gen_reference_vectors.py` to produce the test-vectors
-  file, then invoke the extended smoke test with that file. The test-vectors file
-  is a build intermediate under `WORK_DIR` (cleaned by the existing `trap`) and is
-  **not** added to the bundle whitelist.
+- **`build_target.sh`**: add `--reference-output <path>` to the **existing** step-7
+  `optimize_model.py` invocation (no second call) so the pre-int8 reference graph is
+  emitted alongside the optimized model. Then, after ORT conversion, run
+  `gen_reference_vectors.py` to produce the test-vectors file, and invoke the
+  extended smoke test with that file. Both the reference ONNX and the test-vectors
+  file are build intermediates under `WORK_DIR` (cleaned by the existing `trap`) and
+  are **not** added to the bundle whitelist.
 
 ## Testing (of the harness itself)
 
