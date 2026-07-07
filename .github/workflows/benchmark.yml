@@ -112,6 +112,7 @@ jobs:
         run: |
           mkdir -p output release
           docker run --rm \
+            --entrypoint python3 \
             -v "$(pwd)/scripts:/scripts:ro" \
             -v "$(pwd)/builds:/manifest:ro" \
             -v "$(pwd)/tests/data:/fixtures:ro" \
