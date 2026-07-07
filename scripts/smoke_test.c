@@ -155,11 +155,12 @@ static int run_comparison(const OrtApi *api, OrtSession *session,
         for (uint32_t ii = 0; ii < num_inputs && !sample_bad; ii++) {
             uint32_t name_len = 0, dcode = 0, ndim = 0;
             if (!read_exact(f, &name_len, 4)) { sample_bad = 1; break; }
-            names[ii] = malloc(name_len + 1);
+            names[ii] = malloc((size_t)name_len + 1);
             if (!names[ii] || !read_exact(f, names[ii], name_len)) { sample_bad = 1; break; }
             names[ii][name_len] = '\0';
             if (!read_exact(f, &dcode, 4) || !read_exact(f, &ndim, 4)) { sample_bad = 1; break; }
             int64_t *dims = calloc(ndim ? ndim : 1, sizeof(int64_t));
+            if (!dims) { sample_bad = 1; break; }
             for (uint32_t d = 0; d < ndim; d++) {
                 if (!read_exact(f, &dims[d], 8)) { sample_bad = 1; break; }
             }
