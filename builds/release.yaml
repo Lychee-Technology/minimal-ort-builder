@@ -16,6 +16,9 @@ build:
 
 targets:
   - id: jinaai/jina-embeddings-v5-text-nano-retrieval
+    # quant: output scheme; also selects the tarball filename. build_target.sh
+    # runs pipeline int8 quantization ONLY for int8|q8; every other label
+    # (q4f16 here) is treated as pre-quantized from HF and skips that step.
     quant: q4f16
     bundle_extras:
       - tokenizer.json
