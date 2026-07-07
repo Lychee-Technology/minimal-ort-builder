@@ -96,7 +96,12 @@ def read_vectors(path):
                 arr = np.frombuffer(raw, dtype=_CODE_TO_DTYPE[code]).reshape(dims)
                 inputs[name] = arr
             (ref_count,) = struct.unpack("<Q", f.read(8))
-            ref = np.frombuffer(f.read(ref_count * 4), dtype=np.float32).copy()
+            # The reference payload is always float32 (write_vectors casts to it);
+            # itemsize keeps the byte count in sync with that dtype.
+            ref_dtype = np.dtype(np.float32)
+            ref = np.frombuffer(
+                f.read(ref_count * ref_dtype.itemsize), dtype=ref_dtype
+            ).copy()
             samples.append({"inputs": inputs, "reference": ref})
         return samples
 

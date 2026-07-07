@@ -37,7 +37,14 @@ static ONNXTensorElementDataType code_to_ort(uint32_t code) {
         case 1: return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
         case 2: return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
         case 3: return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
-        default: return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+        default:
+            /* gen_reference_vectors.py only emits codes 0-3; an unknown code
+             * means a producer/reader format mismatch. Warn so it is visible
+             * rather than silently mis-typing the tensor as float. */
+            fprintf(stderr,
+                    "SMOKE WARN: unknown .tvbin dtype code %u; assuming float32\n",
+                    code);
+            return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
     }
 }
 
@@ -284,6 +291,9 @@ static int run_zerofill(const OrtApi *api, OrtSession *session,
             goto cleanup;
         }
         ORT_CHECK(api->GetDimensions(shape_info, dims, ndim), "GetDimensions");
+        /* Assumes a single "input_ids" input; if a model declared more than one,
+         * the last one's sequence length wins. That is fine for the embedding
+         * models this smoke test targets, which have exactly one input_ids. */
         if (strcmp(name, "input_ids") == 0 && ndim >= 2 && dims[1] > 0) {
             input_ids_seq_len = dims[1];
         }
