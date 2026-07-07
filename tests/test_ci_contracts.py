@@ -126,11 +126,17 @@ def test_release_manifest_uses_published_quantized_onnx_for_jina_nano() -> None:
     assert "- onnx/model_q4f16.onnx_data" in text
 
 
-def test_build_script_skips_only_step4_for_prequantized_primary() -> None:
-    """Pre-quantized ONNX inputs should still run optimize_model.py and only skip step 4."""
+def test_build_script_derives_int8_skip_from_quant() -> None:
+    """Pre-quantized detection must be quant-driven, not a hardcoded filename, and
+    still run optimize_model.py while only skipping step 4."""
     text = BUILD_SCRIPT.read_text(encoding="utf-8")
-    assert 'PREQUANTIZED_PRIMARY=0' in text
-    assert 'basename "${HF_PRIMARY}"' in text
+    # The old filename heuristic is gone: this literal only ever appeared in that
+    # check (the manifest reference lives in release.yaml, not this script).
+    assert '"model_q4f16.onnx"' not in text
+    # Quant-driven derivation, safe-by-default (prequantized unless opted in).
+    assert 'PREQUANTIZED_PRIMARY=1' in text
+    assert 'case "${QUANT}"' in text
+    assert 'int8|q8)' in text
     assert 'Using pre-quantized ONNX model directly' not in text
     assert '--skip-int8-quantize' in text
     assert 'python3 "$(dirname "$0")/optimize_model.py"' in text

@@ -93,10 +93,29 @@ if [ -n "${HF_COMPANIONS}" ]; then
     done
 fi
 
-PREQUANTIZED_PRIMARY=0
-if [ "$(basename "${HF_PRIMARY}")" = "model_q4f16.onnx" ]; then
-    PREQUANTIZED_PRIMARY=1
-fi
+# ---------------------------------------------------------------------------
+# 5b. Decide whether to run int8 dynamic quantization (optimize step 4)
+#
+# The build pipeline can only ever *produce* int8 dynamic quantization itself
+# (optimize_model.py step 4 = QuantType.QInt8). Every other quantization scheme
+# (e.g. q4f16) must arrive already-quantized from Hugging Face, so running step 4
+# on it would corrupt an already-quantized graph. We therefore run step 4 only
+# for the opt-in set of quant labels that name pipeline-produced int8; anything
+# else is treated as pre-quantized and skips it. Safe by default: an unrecognised
+# (future) pre-quantized scheme skips int8 rather than being re-quantized.
+# See issue #21. QUANT is validated lowercase, so no case-folding is needed.
+#
+# CAVEAT: the quant label names the *output* scheme (it feeds the tarball
+# filename), whereas int8|q8 here means "the pipeline should *produce* int8".
+# These only collide if a target ships an *already*-quantized q8 model from HF:
+# labelling it quant: q8 would re-quantize it. No such target exists today; if
+# one is added, label it with a non-q8 scheme (or revisit this case) so it is
+# treated as pre-quantized.
+# ---------------------------------------------------------------------------
+PREQUANTIZED_PRIMARY=1
+case "${QUANT}" in
+    int8|q8) PREQUANTIZED_PRIMARY=0 ;;
+esac
 
 # ---------------------------------------------------------------------------
 # 6. Clone ORT source
