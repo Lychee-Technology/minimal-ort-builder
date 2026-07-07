@@ -89,6 +89,50 @@ def test_help_mentions_optional_skip_int8_quantize_flag():
     assert "--skip-int8-quantize" in result.stdout
 
 
+def test_help_mentions_reference_output_flag():
+    result = _run("--help")
+    assert result.returncode == 0
+    assert "--reference-output" in result.stdout
+
+
+def test_main_writes_reference_output_when_requested(monkeypatch, tmp_path):
+    """--reference-output must persist the pre-int8 (step 3) graph."""
+    module = _load_module()
+
+    monkeypatch.setattr(module, "_step0_inline_external_data",
+                        lambda i, o: Path(o).write_bytes(b"s0"))
+    monkeypatch.setattr(module, "_step1_transformer_opt",
+                        lambda i, o, mt: Path(o).write_bytes(b"s1"))
+    monkeypatch.setattr(module, "_step2b_shape_inference",
+                        lambda i, o: Path(o).write_bytes(b"s2b"))
+    monkeypatch.setattr(module, "_step3_ort_graph_opt",
+                        lambda i, o: Path(o).write_bytes(b"REF"))
+    monkeypatch.setattr(module, "_step4_int8_quantize",
+                        lambda i, o: Path(o).write_bytes(b"q"))
+
+    input_path = tmp_path / "model.onnx"
+    input_path.write_bytes(b"x")
+    ref_path = tmp_path / "reference.onnx"
+    out_path = tmp_path / "out.onnx"
+
+    old_argv = sys.argv
+    sys.argv = [
+        str(SCRIPT),
+        "--input", str(input_path),
+        "--output", str(out_path),
+        "--model_type", "bert",
+        "--target_platform", "arm",
+        "--work_dir", str(tmp_path / "work"),
+        "--reference-output", str(ref_path),
+    ]
+    try:
+        module.main()
+    finally:
+        sys.argv = old_argv
+
+    assert ref_path.read_bytes() == b"REF"
+
+
 
 
 def test_main_skips_shape_specialization_when_max_length_not_provided(

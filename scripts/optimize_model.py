@@ -225,6 +225,11 @@ def main() -> None:
         action="store_true",
         help="Run steps 0/1/2b/3 and stop before step 4 (for pre-quantized ONNX inputs)",
     )
+    parser.add_argument(
+        "--reference-output",
+        type=Path,
+        help="Also write the pre-int8 (step 3) graph here, for correctness comparison",
+    )
     args = parser.parse_args()
 
     if not args.input.exists():
@@ -269,6 +274,11 @@ def main() -> None:
 
     print("==> Step 3: ORT graph optimization")
     _step3_ort_graph_opt(step2b_out, step3_out)
+
+    if args.reference_output is not None:
+        args.reference_output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(step3_out, args.reference_output)
+        print(f"    reference graph written: {args.reference_output}")
 
     if args.skip_int8_quantize:
         print("==> Step 4: dynamic int8 quantization (skipped)")
