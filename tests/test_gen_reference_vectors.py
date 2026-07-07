@@ -129,3 +129,66 @@ def test_main_writes_vectors_file(monkeypatch, tmp_path):
     # ids [1,2,3,4] truncated to 3 -> output (1,3,2) -> 6 floats
     assert r[0]["reference"].size == 6
     assert r[0]["inputs"]["input_ids"].tolist() == [[1, 2, 3]]
+
+
+def test_main_inputs_only_writes_empty_reference(monkeypatch, tmp_path):
+    module = _load_module()
+
+    class FakeEnc:
+        def __init__(self, ids):
+            self.ids = ids
+
+    class FakeTokenizer:
+        @classmethod
+        def from_file(cls, path):
+            return cls()
+
+        def encode(self, text):
+            return FakeEnc([1, 2, 3, 4])
+
+    fake_tok_mod = types.ModuleType("tokenizers")
+    fake_tok_mod.Tokenizer = FakeTokenizer
+    monkeypatch.setitem(sys.modules, "tokenizers", fake_tok_mod)
+
+    class FakeIO:
+        def __init__(self, name):
+            self.name = name
+
+    class FakeSession:
+        def get_inputs(self):
+            return [FakeIO("input_ids"), FakeIO("attention_mask")]
+
+        def get_outputs(self):
+            return [FakeIO("last_hidden_state")]
+
+        def run(self, output_names, feeds):
+            # --inputs-only must never invoke the reference computation.
+            raise AssertionError("session.run must not be called with --inputs-only")
+
+    fake_ort = types.ModuleType("onnxruntime")
+    fake_ort.InferenceSession = lambda *a, **k: FakeSession()
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+
+    fixture = tmp_path / "f.jsonl"
+    fixture.write_text('{"text":"hello world"}\n{"text":"second"}\n', encoding="utf-8")
+    tokenizer = tmp_path / "tokenizer.json"
+    tokenizer.write_text("{}", encoding="utf-8")
+    model = tmp_path / "model.ort"
+    model.write_bytes(b"x")
+    out = tmp_path / "v.tvbin"
+
+    module.main([
+        "--inputs-only",
+        "--model", str(model),
+        "--tokenizer", str(tokenizer),
+        "--fixture", str(fixture),
+        "--output", str(out),
+        "--num-samples", "2",
+        "--max-tokens", "3",
+    ])
+
+    r = module.read_vectors(str(out))
+    assert len(r) == 2
+    # Feeds are still present, but the reference payload is empty (ref_count=0).
+    assert r[0]["inputs"]["input_ids"].tolist() == [[1, 2, 3]]
+    assert r[0]["reference"].size == 0

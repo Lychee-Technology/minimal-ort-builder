@@ -42,7 +42,7 @@ build:
     - build-info.json
 
 targets:
-  - id: phi3-mini-q4f16     # unique slug; used in artifact names
+  - id: phi3-mini-q4f16     # model slug; unique per (id, quant), used in artifact names
     quant: q4f16            # quantisation identifier; included in the tarball filename
     model:
       repo_id: microsoft/Phi-3-mini-4k-instruct-onnx   # Hugging Face repo in "owner/repo" format
@@ -53,7 +53,10 @@ targets:
         - tokenizer.json
 ```
 
-To add a second target, append another entry under `targets` with a distinct `id`.
+To add a second target, append another entry under `targets`. Each `(id, quant)`
+pair must be unique, so the same model `id` may appear more than once with
+different `quant` values (e.g. to compare quantisation schemes) — each produces
+its own tarball named `<id_safe>_<quant>_linux-arm64.tar.gz`.
 
 ---
 
@@ -87,7 +90,7 @@ The following rules are enforced by `scripts/validate_manifest.py`:
 | 5 | `targets` must be a non-empty list |
 | 6 | Each target must have `id`, `quant`, and `model` |
 | 6b | `quant` must match `^[a-z0-9][a-z0-9\-]*$` (e.g. `fp32`, `q4f16`, `int8`) |
-| 7 | Target `id` values must be unique across all targets |
+| 7 | Each `(id, quant)` pair must be unique across all targets (the same `id` may repeat with different `quant` values) |
 | 8 | Targets must not contain a per-target `onnxruntime` key (the global one is used) |
 | 9 | Each `model` must have `repo_id`, `revision`, `primary`, and `companions` |
 | 9b | `companions` must be a list (not a string or other scalar) |

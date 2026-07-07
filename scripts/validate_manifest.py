@@ -74,7 +74,7 @@ def validate(data: dict) -> None:
     if not isinstance(targets, list) or len(targets) == 0:
         _fail("'targets' must be a non-empty list")
 
-    seen_ids: set[str] = set()
+    seen_id_quants: set[tuple] = set()
 
     for i, target in enumerate(targets):
         ctx = f"targets[{i}]"
@@ -90,11 +90,14 @@ def validate(data: dict) -> None:
                 f"(optionally with hyphens), got {quant!r}"
             )
 
-        # Rule 7: target ids must be unique
+        # Rule 7: each (id, quant) pair must be unique. The same model id may
+        # appear multiple times with different quants (e.g. a benchmark that
+        # compares quantization schemes); tarball/artifact names already key on
+        # (id_safe, quant), so this is the natural uniqueness boundary.
         tid = target["id"]
-        if tid in seen_ids:
-            _fail(f"duplicate target id '{tid}'")
-        seen_ids.add(tid)
+        if (tid, quant) in seen_id_quants:
+            _fail(f"duplicate target id '{tid}' with quant '{quant}'")
+        seen_id_quants.add((tid, quant))
 
         # Rule 8: no per-target 'onnxruntime' key
         if "onnxruntime" in target:

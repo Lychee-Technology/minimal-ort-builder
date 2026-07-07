@@ -1,0 +1,182 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "build (fresh from manifest) or release (download assets)"
+        type: choice
+        options:
+          - build
+          - release
+        default: build
+      release_tag:
+        description: "Release tag to download (required when source=release)"
+        type: string
+        default: ""
+      warmup:
+        description: "Untimed warmup iterations"
+        type: string
+        default: "10"
+      iters:
+        description: "Timed iterations"
+        type: string
+        default: "100"
+      num_samples:
+        description: "Fixture texts to cycle"
+        type: string
+        default: "3"
+      max_tokens:
+        description: "Token truncation length"
+        type: string
+        default: "128"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.emit.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install tooling deps
+        run: pip install pyyaml pytest numpy
+
+      - name: Validate manifest
+        run: python scripts/validate_manifest.py builds/release.yaml
+
+      - name: Run regression tests
+        run: pytest tests/test_validate_manifest.py tests/test_optimize_model.py tests/test_ci_contracts.py tests/test_gen_reference_vectors.py -q
+
+      - name: Emit matrix
+        id: emit
+        run: |
+          MATRIX=$(python scripts/emit_matrix.py builds/release.yaml)
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+
+  benchmark:
+    needs: plan
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download release tarball
+        if: ${{ inputs.source == 'release' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          ASSET: ${{ matrix.target.target_id_safe }}_${{ matrix.target.quant }}_linux-arm64.tar.gz
+        run: |
+          if [ -z "${RELEASE_TAG}" ]; then
+            echo "release_tag input is required when source=release" >&2
+            exit 1
+          fi
+          mkdir -p release
+          gh release download "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern "${ASSET}" \
+            --dir release
+
+      - name: Build Docker image
+        run: docker build -t ort-build:local -f docker/lambda-build.Dockerfile docker/
+
+      - name: Benchmark target in Lambda container
+        env:
+          TARGET_ID: ${{ matrix.target.target_id }}
+          ORT_VERSION: ${{ matrix.target.ort_version }}
+          QUANT: ${{ matrix.target.quant }}
+          HF_REPO_ID: ${{ matrix.target.hf_repo_id }}
+          HF_REVISION: ${{ matrix.target.hf_revision }}
+          HF_PRIMARY: ${{ matrix.target.hf_primary }}
+          HF_COMPANIONS: ${{ matrix.target.hf_companions }}
+          BUNDLE_EXTRAS: ${{ matrix.target.bundle_extras }}
+          MODEL_METADATA: ${{ matrix.target.model_metadata }}
+          CPU_TUNING: ${{ matrix.target.cpu_tuning }}
+          EXECUTION_PROVIDER: ${{ matrix.target.execution_provider }}
+          MINIMAL_BUILD: ${{ matrix.target.minimal_build }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          SOURCE: ${{ inputs.source }}
+          WARMUP: ${{ inputs.warmup }}
+          ITERS: ${{ inputs.iters }}
+          NUM_SAMPLES: ${{ inputs.num_samples }}
+          MAX_TOKENS: ${{ inputs.max_tokens }}
+        run: |
+          mkdir -p output release
+          docker run --rm \
+            --entrypoint python3 \
+            -v "$(pwd)/scripts:/scripts:ro" \
+            -v "$(pwd)/builds:/manifest:ro" \
+            -v "$(pwd)/tests/data:/fixtures:ro" \
+            -v "$(pwd)/output:/output" \
+            -v "$(pwd)/release:/release:ro" \
+            -e TARGET_ID \
+            -e ORT_VERSION \
+            -e QUANT \
+            -e HF_REPO_ID \
+            -e HF_REVISION \
+            -e HF_PRIMARY \
+            -e HF_COMPANIONS \
+            -e BUNDLE_EXTRAS \
+            -e MODEL_METADATA \
+            -e CPU_TUNING \
+            -e EXECUTION_PROVIDER \
+            -e MINIMAL_BUILD \
+            -e HF_TOKEN \
+            -e SOURCE \
+            -e WARMUP \
+            -e ITERS \
+            -e NUM_SAMPLES \
+            -e MAX_TOKENS \
+            -e FIXTURE_DIR=/fixtures \
+            -e OUTPUT_DIR=/output \
+            -e RELEASE_DIR=/release \
+            -e PYTHONUNBUFFERED=1 \
+            ort-build:local \
+            /scripts/run_benchmark.py
+
+      - name: Upload bench result
+        uses: actions/upload-artifact@v7
+        with:
+          name: bench-${{ matrix.target.target_id_safe }}_${{ matrix.target.quant }}
+          path: output/bench-*.json
+          if-no-files-found: error
+          retention-days: 1
+
+  report:
+    needs: benchmark
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Download all bench results
+        uses: actions/download-artifact@v7
+        with:
+          path: bench-results
+          merge-multiple: true
+
+      - name: Render report
+        run: python scripts/render_benchmark_report.py bench-results .
+
+      - name: Upload report
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-report
+          path: |
+            results.json
+            report.md
+          if-no-files-found: error
