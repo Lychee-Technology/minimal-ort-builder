@@ -145,11 +145,19 @@ def main():
         "-Wl,-rpath," + str(extract_dir),
     ])
 
-    proc = _run(
+    # The tarball ships only `libonnxruntime.so`, but the bench binary's
+    # DT_NEEDED is the library's versioned SONAME (e.g. libonnxruntime.so.1.x.y),
+    # which is absent under -rpath. Preloading the shipped .so registers it under
+    # its SONAME so the loader resolves the dependency (would otherwise exit 127).
+    bench_env = {**os.environ, "LD_PRELOAD": str(so_path)}
+    print(f"==> {bench_bin} {model_path} {tvbin} {warmup} {iters}", flush=True)
+    proc = subprocess.run(
         [str(bench_bin), str(model_path), str(tvbin), warmup, iters],
-        capture_output=True, text=True,
+        capture_output=True, text=True, env=bench_env,
     )
     sys.stderr.write(proc.stderr)
+    if proc.returncode != 0:
+        sys.exit(f"run_benchmark: bench exited {proc.returncode}")
     metrics = json.loads(proc.stdout.strip().splitlines()[-1])
 
     result = {

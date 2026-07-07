@@ -280,7 +280,7 @@ cleanup:
         }
         free(samples);
     }
-    if (out_name) api->AllocatorFree(allocator, out_name);
+    if (out_name) (void)api->AllocatorFree(allocator, out_name);
     if (mem_info) api->ReleaseMemoryInfo(mem_info);
     if (session)  api->ReleaseSession(session);
     if (opts)     api->ReleaseSessionOptions(opts);
