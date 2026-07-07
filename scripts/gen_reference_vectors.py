@@ -95,3 +95,57 @@ def read_vectors(path):
             ref = np.frombuffer(f.read(ref_count * 4), dtype=np.float32).copy()
             samples.append({"inputs": inputs, "reference": ref})
         return samples
+
+
+def read_texts(fixture_path, num_samples):
+    texts = []
+    with open(fixture_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            record = json.loads(line)
+            text = record.get("text")
+            if not text:
+                continue
+            texts.append(text)
+            if len(texts) >= num_samples:
+                break
+    if not texts:
+        raise ValueError(f"no usable 'text' records in {fixture_path}")
+    return texts
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Generate correctness test vectors")
+    parser.add_argument("--model", required=True, help="Reference (pre-int8) ONNX path")
+    parser.add_argument("--tokenizer", required=True, help="tokenizer.json path")
+    parser.add_argument("--fixture", required=True, help="JSONL fixture with 'text' field")
+    parser.add_argument("--output", required=True, help="Output .tvbin path")
+    parser.add_argument("--num-samples", type=int, default=3)
+    parser.add_argument("--max-tokens", type=int, default=128)
+    args = parser.parse_args(argv)
+
+    import onnxruntime as ort
+    from tokenizers import Tokenizer
+
+    tokenizer = Tokenizer.from_file(args.tokenizer)
+    session = ort.InferenceSession(args.model, providers=["CPUExecutionProvider"])
+    input_names = [i.name for i in session.get_inputs()]
+    output_name = session.get_outputs()[0].name
+
+    texts = read_texts(args.fixture, args.num_samples)
+    samples = []
+    for text in texts:
+        ids = truncate_ids(tokenizer.encode(text).ids, args.max_tokens)
+        feeds = build_feeds(input_names, ids)
+        output = session.run([output_name], feeds)[0]
+        reference = np.asarray(output, dtype=np.float32).reshape(-1)
+        samples.append({"inputs": feeds, "reference": reference})
+
+    write_vectors(args.output, samples)
+    print(f"    wrote {len(samples)} reference sample(s) to {args.output}")
+
+
+if __name__ == "__main__":
+    main()
