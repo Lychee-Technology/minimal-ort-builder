@@ -446,6 +446,11 @@ def test_fixture_calibration_reader_iterates_then_none_and_rewinds(monkeypatch, 
     reader.rewind()
     assert reader.get_next()["input_ids"].tolist() == [[1, 2, 3]]
 
+    # ORT 1.27's GPTQ path iterates the reader; iteration must yield all samples
+    # and be repeatable (a fresh pass each time).
+    assert [f["input_ids"].tolist() for f in reader] == [[[1, 2, 3]], [[1, 2]]]
+    assert [f["input_ids"].tolist() for f in reader] == [[[1, 2, 3]], [[1, 2]]]
+
 
 def test_step1_transformer_opt_disables_attention_fusion(monkeypatch, tmp_path):
     """Transformer optimization must explicitly keep attention fusion disabled."""

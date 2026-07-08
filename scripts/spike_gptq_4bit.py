@@ -74,6 +74,11 @@ class FixtureCalibrationReader:
     def get_next(self):
         return next(self._it, None)
 
+    def __iter__(self):
+        # ORT 1.27's GPTQ path iterates the reader (for data in reader) instead of
+        # calling get_next(); yield a fresh pass over the stored feeds each time.
+        return iter(self._feeds)
+
     def rewind(self):
         self._it = iter(self._feeds)
 

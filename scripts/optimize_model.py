@@ -212,6 +212,11 @@ class _FixtureCalibrationReader:
     def get_next(self):
         return next(self._it, None)
 
+    def __iter__(self):
+        # ORT 1.27's GPTQ path (neural_compressor) consumes the reader by iteration
+        # rather than get_next(); yield a fresh pass over the stored feeds each time.
+        return iter(self._feeds)
+
     def rewind(self):
         self._it = iter(self._feeds)
 
