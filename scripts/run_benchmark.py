@@ -57,6 +57,41 @@ def build_tarball(output_dir):
     return None  # tarball located by caller from OUTPUT_DIR
 
 
+def reference_spec(model_metadata):
+    """Extract the fp32 golden reference config from the manifest metadata JSON.
+
+    Returns (primary, companions) when a `benchmark.reference_primary` is set, else
+    (None, []). When present, the benchmark computes cosine similarity of the shipped
+    artifact's embedding against this full-precision model; when absent it falls back
+    to inputs-only (no cosine).
+    """
+    try:
+        meta = json.loads(model_metadata) if model_metadata else {}
+    except json.JSONDecodeError:
+        meta = {}
+    bench = (meta.get("benchmark") or {}) if isinstance(meta, dict) else {}
+    primary = bench.get("reference_primary")
+    companions = bench.get("reference_companions") or []
+    if not primary:
+        return None, []
+    return primary, list(companions)
+
+
+def download_reference_model(repo_id, revision, primary, companions, dest):
+    """hf download the fp32 golden primary + companions into dest; return primary path."""
+    dest.mkdir(parents=True, exist_ok=True)
+    for path in [primary, *companions]:
+        _run([
+            "hf", "download", repo_id, path,
+            "--revision", revision,
+            "--local-dir", str(dest),
+        ])
+    ref_path = dest / primary
+    if not ref_path.is_file():
+        sys.exit(f"run_benchmark: reference model not found after download: {ref_path}")
+    return ref_path
+
+
 def sparse_clone_headers(ort_version, dest):
     """Sparse-checkout just the ORT C API header dir at the given tag."""
     _run([
@@ -84,6 +119,9 @@ def main():
     iters = _env("ITERS", "100")
     num_samples = _env("NUM_SAMPLES", "3")
     max_tokens = _env("MAX_TOKENS", "128")
+    model_metadata = _env("MODEL_METADATA", "{}")
+    hf_repo_id = _env("HF_REPO_ID", "")
+    hf_revision = _env("HF_REVISION", "main")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     tarball_name = f"{id_safe}_{quant}_linux-arm64.tar.gz"
@@ -122,18 +160,33 @@ def main():
 
     include_dir = sparse_clone_headers(ort_version, work / "ort-headers")
 
-    # Token feeds only; the harness times Run() and ignores the reference.
+    # Build the test-vectors file. When the manifest configures an fp32 golden
+    # (metadata.benchmark.reference_primary), generate a full reference from that
+    # model so bench.c can report cosine similarity of the shipped artifact vs
+    # full precision. Otherwise emit inputs-only feeds (bench.c times Run() only).
+    ref_primary, ref_companions = reference_spec(model_metadata)
     tvbin = work / "bench.tvbin"
-    _run([
+    vectors_cmd = [
         sys.executable, str(SCRIPTS_DIR / "gen_reference_vectors.py"),
-        "--inputs-only",
-        "--model", str(model_path),
         "--tokenizer", str(tokenizer_path),
         "--fixture", str(fixture_dir / FIXTURE_NAME),
         "--output", str(tvbin),
         "--num-samples", num_samples,
         "--max-tokens", max_tokens,
-    ])
+    ]
+    if ref_primary:
+        if not hf_repo_id:
+            sys.exit("run_benchmark: HF_REPO_ID is required to fetch the benchmark reference")
+        print(f"==> Downloading fp32 golden reference {ref_primary}", flush=True)
+        ref_model = download_reference_model(
+            hf_repo_id, hf_revision, ref_primary, ref_companions, work / "reference"
+        )
+        # Real reference embeddings from the full-precision model (no --inputs-only).
+        vectors_cmd += ["--model", str(ref_model)]
+    else:
+        # No golden configured: feeds only, empty reference payload.
+        vectors_cmd += ["--inputs-only", "--model", str(model_path)]
+    _run(vectors_cmd)
 
     bench_bin = work / "bench"
     _run([

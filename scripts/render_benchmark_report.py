@@ -23,6 +23,8 @@ from pathlib import Path
 COLUMNS = [
     ("target_id", "target_id"),
     ("quant", "quant"),
+    ("mean_cosine", "mean_cosine"),
+    ("min_cosine", "min_cosine"),
     ("load_ms", "load_ms"),
     ("mean_ms", "mean_ms"),
     ("p50_ms", "p50_ms"),
@@ -44,6 +46,8 @@ def _fmt(key, value):
         return f"{float(value):.3f}"
     if key == "throughput_ips":
         return f"{float(value):.2f}"
+    if key.endswith("_cosine"):
+        return f"{float(value):.6f}"
     if key.endswith("_bytes") or key.endswith("_kb"):
         return f"{int(value):,}"
     return str(value)

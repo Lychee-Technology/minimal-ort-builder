@@ -58,6 +58,23 @@ pair must be unique, so the same model `id` may appear more than once with
 different `quant` values (e.g. to compare quantisation schemes) — each produces
 its own tarball named `<id_safe>_<quant>_linux-arm64.tar.gz`.
 
+`quant: int8` is the one scheme the pipeline **produces itself**: point its
+`primary` at the unquantized fp32 ONNX and the build runs dynamic int8
+quantization (`quantize_dynamic`, `QuantType.QInt8`). Every other label
+(`fp16`, `q4`, `q4f16`, …) must already be quantized in the source repo and is
+shipped as-is.
+
+### Benchmark cosine similarity
+
+The `Benchmark` workflow (`.github/workflows/benchmark.yml`) compares targets
+side by side on latency, throughput, memory, and size. When a target sets an
+optional `metadata.benchmark.reference_primary` (the fp32 full-precision ONNX)
+plus `reference_companions`, the benchmark also reports `mean_cosine` /
+`min_cosine`: how close that quant's embedding stays to the full-precision model
+on the fixture inputs. It is an **informational** column — a low score (expected
+for aggressive schemes like `q4`) never fails the run. Targets without the block
+show blank cosine cells.
+
 ---
 
 ## primary and companions

@@ -207,6 +207,31 @@ def validate(data: dict) -> None:
                                 f"{ctx}.metadata.correctness: '{key}' must be a positive integer"
                             )
 
+            # Optional benchmark block: the fp32 golden the benchmark scores this
+            # target's embedding against (informational cosine, not a build gate).
+            benchmark = metadata.get("benchmark")
+            if benchmark is not None:
+                if not isinstance(benchmark, dict):
+                    _fail(f"{ctx}.metadata: 'benchmark' must be a mapping")
+                ref_primary = benchmark.get("reference_primary")
+                if ref_primary is not None and not _is_safe_path(ref_primary):
+                    _fail(
+                        f"{ctx}.metadata.benchmark: 'reference_primary' must be a relative "
+                        f"path (no leading '/' and no '..' segments)"
+                    )
+                ref_companions = benchmark.get("reference_companions")
+                if ref_companions is not None:
+                    if not isinstance(ref_companions, list):
+                        _fail(
+                            f"{ctx}.metadata.benchmark: 'reference_companions' must be a list"
+                        )
+                    for path in ref_companions:
+                        if not _is_safe_path(path):
+                            _fail(
+                                f"{ctx}.metadata.benchmark: companion path '{path}' must be "
+                                f"relative (no leading '/' and no '..' segments)"
+                            )
+
 
 def main() -> None:
     if len(sys.argv) != 2:

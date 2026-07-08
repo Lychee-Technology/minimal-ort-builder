@@ -6,10 +6,12 @@
  *       in a timed loop, and emit latency/throughput/memory/size metrics as a
  *       single JSON object on stdout.
  *
- * Reuses the TVB1 reader and session setup from smoke_test.c. The reference
- * payload in the .tvbin is read and ignored — this harness times Run(), it does
- * not check correctness (that is the smoke test's job). Vectors produced by
- * `gen_reference_vectors.py --inputs-only` carry an empty reference payload.
+ * Reuses the TVB1 reader and session setup from smoke_test.c. When the .tvbin
+ * carries an fp32 golden reference (produced by gen_reference_vectors.py WITHOUT
+ * --inputs-only), the harness additionally scores each output by cosine similarity
+ * in an untimed pass and reports `mean_cosine`/`min_cosine` — purely informational,
+ * never a gate. Vectors produced with `--inputs-only` carry an empty reference
+ * payload, and the cosine fields are then omitted.
  *
  * Runtime graph optimization is disabled (ORT_DISABLE_ALL) to match the smoke
  * test and what ships: the model is already fully optimized offline. Inference
@@ -54,6 +56,73 @@ static int read_exact(FILE *f, void *dst, size_t n) {
     return fread(dst, 1, n, f) == n;
 }
 
+/* IEEE half → float (mirrors smoke_test.c so fp16 outputs compare correctly). */
+static float half_to_float(uint16_t h) {
+    uint32_t sign = (uint32_t)(h & 0x8000u) << 16;
+    uint32_t exp  = (h >> 10) & 0x1Fu;
+    uint32_t mant = h & 0x3FFu;
+    uint32_t f;
+    if (exp == 0) {
+        if (mant == 0) {
+            f = sign;
+        } else {
+            exp = 127 - 15 + 1;
+            while ((mant & 0x400u) == 0) { mant <<= 1; exp--; }
+            mant &= 0x3FFu;
+            f = sign | (exp << 23) | (mant << 13);
+        }
+    } else if (exp == 0x1Fu) {
+        f = sign | 0x7F800000u | (mant << 13);
+    } else {
+        f = sign | ((exp - 15 + 127) << 23) | (mant << 13);
+    }
+    float out;
+    memcpy(&out, &f, sizeof(out));
+    return out;
+}
+
+/* Convert the first output tensor to a newly-allocated float array. */
+static float *tensor_to_float(const OrtApi *api, OrtValue *val, size_t *out_count) {
+    OrtTensorTypeAndShapeInfo *info = NULL;
+    if (api->GetTensorTypeAndShape(val, &info)) return NULL;
+    size_t count = 0;
+    api->GetTensorShapeElementCount(info, &count);
+    ONNXTensorElementDataType t;
+    api->GetTensorElementType(info, &t);
+    api->ReleaseTensorTypeAndShapeInfo(info);
+
+    void *data = NULL;
+    if (api->GetTensorMutableData(val, &data)) return NULL;
+
+    float *out = malloc((count ? count : 1) * sizeof(float));
+    if (!out) return NULL;
+    for (size_t i = 0; i < count; i++) {
+        switch (t) {
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+                out[i] = ((float *)data)[i]; break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+                out[i] = half_to_float(((uint16_t *)data)[i]); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+                out[i] = (float)((double *)data)[i]; break;
+            default:
+                out[i] = 0.0f; break;
+        }
+    }
+    *out_count = count;
+    return out;
+}
+
+static double cosine(const float *a, const float *b, size_t n) {
+    double dot = 0.0, na = 0.0, nb = 0.0;
+    for (size_t i = 0; i < n; i++) {
+        dot += (double)a[i] * (double)b[i];
+        na  += (double)a[i] * (double)a[i];
+        nb  += (double)b[i] * (double)b[i];
+    }
+    if (na == 0.0 || nb == 0.0) return 0.0;
+    return dot / (sqrt(na) * sqrt(nb));
+}
+
 static double now_ms(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -74,12 +143,15 @@ static double percentile(const double *sorted, size_t n, double frac) {
     return sorted[idx];
 }
 
-/* One decoded sample: named input tensors ready to feed to Run(). */
+/* One decoded sample: named input tensors ready to feed to Run(), plus an
+ * optional float32 reference embedding (ref_count == 0 under --inputs-only). */
 typedef struct {
     uint32_t num_inputs;
     char **names;
     OrtValue **tensors;
     void **bufs;
+    float *ref;
+    size_t ref_count;
 } Sample;
 
 int main(int argc, char *argv[]) {
@@ -199,11 +271,16 @@ int main(int argc, char *argv[]) {
                 goto cleanup;
             }
         }
-        /* Reference payload: read the count and skip the floats (ignored). */
+        /* Reference payload: keep the floats when present so we can report cosine
+         * similarity vs the fp32 golden. Empty (ref_count == 0) under --inputs-only. */
         uint64_t ref_count = 0;
         if (!read_exact(f, &ref_count, 8)) { goto trunc; }
-        if (ref_count && fseek(f, (long)(ref_count * sizeof(float)), SEEK_CUR) != 0) {
-            goto trunc;
+        s->ref_count = (size_t)ref_count;
+        if (ref_count) {
+            s->ref = malloc((size_t)ref_count * sizeof(float));
+            if (!s->ref || !read_exact(f, s->ref, (size_t)ref_count * sizeof(float))) {
+                goto trunc;
+            }
         }
         continue;
     trunc:
@@ -239,6 +316,45 @@ int main(int argc, char *argv[]) {
         times[i] = t1 - t0;
     }
 
+    /* Correctness (untimed): if the vectors carry an fp32 golden reference, run
+     * each sample once more and score its output by cosine similarity. Purely
+     * informational — a mismatch or a low score never fails the benchmark. */
+    int have_cosine = 0;
+    double cosine_sum = 0.0, cosine_min = 1.0;
+    long cosine_n = 0;
+    for (uint32_t si = 0; si < num_samples; si++) {
+        Sample *s = &samples[si];
+        if (s->ref_count == 0) continue;
+        OrtValue *output = NULL;
+        OrtStatus *rs = api->Run(session, NULL,
+                                 (const char *const *)s->names,
+                                 (const OrtValue *const *)s->tensors, s->num_inputs,
+                                 (const char *const *)&out_name, 1, &output);
+        if (rs) {
+            fprintf(stderr, "BENCH WARN: cosine Run failed: %s\n", api->GetErrorMessage(rs));
+            api->ReleaseStatus(rs);
+            continue;
+        }
+        size_t got = 0;
+        float *ov = tensor_to_float(api, output, &got);
+        if (ov) {
+            if (got == s->ref_count) {
+                double sim = cosine(ov, s->ref, got);
+                have_cosine = 1;
+                cosine_sum += sim;
+                if (sim < cosine_min) cosine_min = sim;
+                cosine_n++;
+            } else {
+                fprintf(stderr,
+                        "BENCH WARN: sample %u output count %zu != ref %zu; skipping cosine\n",
+                        si, got, s->ref_count);
+            }
+            free(ov);
+        }
+        api->ReleaseValue(output);
+    }
+    double mean_cosine = cosine_n ? cosine_sum / (double)cosine_n : 0.0;
+
     double sum = 0.0;
     for (long i = 0; i < iters; i++) sum += times[i];
     double mean_ms = sum / (double)iters;
@@ -254,8 +370,12 @@ int main(int argc, char *argv[]) {
 
     printf("{\"load_ms\": %.3f, \"iters\": %ld, \"mean_ms\": %.4f, "
            "\"p50_ms\": %.4f, \"p90_ms\": %.4f, \"p99_ms\": %.4f, "
-           "\"throughput_ips\": %.2f, \"peak_rss_kb\": %ld}\n",
+           "\"throughput_ips\": %.2f, \"peak_rss_kb\": %ld",
            load_ms, iters, mean_ms, p50, p90, p99, throughput_ips, peak_rss_kb);
+    if (have_cosine) {
+        printf(", \"mean_cosine\": %.6f, \"min_cosine\": %.6f", mean_cosine, cosine_min);
+    }
+    printf("}\n");
     exit_code = 0;
 
 cleanup:
@@ -277,6 +397,7 @@ cleanup:
                 for (uint32_t ii = 0; ii < s->num_inputs; ii++) free(s->names[ii]);
                 free(s->names);
             }
+            free(s->ref);
         }
         free(samples);
     }

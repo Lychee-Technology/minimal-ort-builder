@@ -1,5 +1,7 @@
 """Regression guards for CI workflow and build script contracts."""
 
+import importlib.util
+import json
 from pathlib import Path
 
 
@@ -251,3 +253,58 @@ def test_render_report_emits_summary_and_results_json() -> None:
 def test_gen_reference_vectors_supports_inputs_only() -> None:
     text = GEN_VECTORS.read_text(encoding="utf-8")
     assert "--inputs-only" in text
+
+
+def test_bench_c_reports_cosine_similarity() -> None:
+    """The benchmark scores each output against the fp32 golden by cosine."""
+    text = BENCH_C.read_text(encoding="utf-8")
+    assert "cosine" in text
+    assert "mean_cosine" in text
+    assert "min_cosine" in text
+
+
+def test_run_benchmark_builds_fp32_golden_reference() -> None:
+    """When a benchmark reference is configured, run_benchmark fetches the fp32
+    golden and generates real reference vectors (not inputs-only)."""
+    text = RUN_BENCH.read_text(encoding="utf-8")
+    assert "reference_primary" in text
+    assert "hf" in text and "download" in text
+
+
+def test_render_report_has_cosine_column() -> None:
+    text = RENDER_REPORT.read_text(encoding="utf-8")
+    assert "mean_cosine" in text
+
+
+def test_manifest_ships_int8_target() -> None:
+    """int8 is a first-class build target (pipeline-produced from fp32)."""
+    text = RELEASE_MANIFEST.read_text(encoding="utf-8")
+    assert "quant: int8" in text
+
+
+def _load_run_benchmark():
+    spec = importlib.util.spec_from_file_location("run_benchmark", RUN_BENCH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_reference_spec_extracts_benchmark_config() -> None:
+    module = _load_run_benchmark()
+    meta = json.dumps({
+        "benchmark": {
+            "reference_primary": "onnx/model.onnx",
+            "reference_companions": ["onnx/model.onnx_data"],
+        }
+    })
+    primary, companions = module.reference_spec(meta)
+    assert primary == "onnx/model.onnx"
+    assert companions == ["onnx/model.onnx_data"]
+
+
+def test_reference_spec_absent_falls_back_to_none() -> None:
+    module = _load_run_benchmark()
+    # No benchmark block, empty, and malformed JSON all yield "no reference".
+    assert module.reference_spec(json.dumps({"model_type": "bert"})) == (None, [])
+    assert module.reference_spec("{}") == (None, [])
+    assert module.reference_spec("not json") == (None, [])

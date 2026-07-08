@@ -1106,3 +1106,47 @@ def test_correctness_num_samples_must_be_positive():
     data["targets"][0]["metadata"]["correctness"]["num_samples"] = 0
     with pytest.raises(SystemExit):
         _vm().validate(data)
+
+
+_MANIFEST_WITH_BENCHMARK = """
+onnxruntime:
+  version: "1.27.0"
+build:
+  container_image: x
+  target_os: linux
+  target_arch: arm64
+  cpu_tuning: neoverse-n1
+  execution_provider: cpu
+  minimal_build: extended
+targets:
+  - id: t
+    quant: int8
+    metadata:
+      benchmark:
+        reference_primary: onnx/model.onnx
+        reference_companions:
+          - onnx/model.onnx_data
+    model:
+      repo_id: r
+      revision: main
+      primary: onnx/model.onnx
+      companions: []
+"""
+
+
+def test_valid_benchmark_block_passes():
+    _vm().validate(yaml.safe_load(_MANIFEST_WITH_BENCHMARK))
+
+
+def test_benchmark_reference_primary_must_be_relative():
+    data = yaml.safe_load(_MANIFEST_WITH_BENCHMARK)
+    data["targets"][0]["metadata"]["benchmark"]["reference_primary"] = "/abs/model.onnx"
+    with pytest.raises(SystemExit):
+        _vm().validate(data)
+
+
+def test_benchmark_reference_companions_must_be_list():
+    data = yaml.safe_load(_MANIFEST_WITH_BENCHMARK)
+    data["targets"][0]["metadata"]["benchmark"]["reference_companions"] = "model.onnx_data"
+    with pytest.raises(SystemExit):
+        _vm().validate(data)
