@@ -38,6 +38,7 @@ RUN pip3 install --no-cache-dir \
         sympy \
         packaging \
         onnx \
+        onnx-ir \
         flatbuffers \
         tokenizers \
         "onnxruntime==1.27.0"
@@ -50,6 +51,6 @@ RUN pip3 install --no-cache-dir \
 RUN clang --version && clang++ --version \
     && which huggingface-cli && huggingface-cli --help \
     && which hf && hf --help \
-    && python3 -c "import torch; import onnxruntime; import tokenizers; from onnxruntime.transformers import optimizer; print(torch.__version__)"
+    && python3 -c "import torch; import onnxruntime; import tokenizers; from onnxruntime.transformers import optimizer; import onnxruntime.quantization.matmul_nbits_quantizer; print(torch.__version__)"
 
 ENTRYPOINT ["/bin/bash"]

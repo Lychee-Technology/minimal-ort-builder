@@ -111,6 +111,10 @@ def load_nbits_api():
                   f"{[s for s in dir(mod) if 'Config' in s or 'Quantizer' in s]}")
             return mod
         except ModuleNotFoundError as e:
+            # Only treat "this module name isn't present" as a reason to try the
+            # next candidate; a missing INNER dependency (e.g. onnx_ir) must surface.
+            if e.name != name:
+                raise
             last_err = e
     raise ImportError(
         "no MatMulNBits quantizer module found in onnxruntime.quantization"

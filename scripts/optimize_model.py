@@ -258,7 +258,11 @@ def _step4_gptq_4bit(
         try:
             nbits = importlib.import_module(name)
             break
-        except ModuleNotFoundError:
+        except ModuleNotFoundError as e:
+            # A missing inner dependency (e.g. onnx_ir) must surface, not be
+            # mistaken for "this quantizer module name isn't present".
+            if e.name != name:
+                raise
             continue
     if nbits is None:
         raise ImportError(
