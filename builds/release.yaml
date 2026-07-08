@@ -33,6 +33,13 @@ targets:
       raw_embedding_dimension: 768
       output_embedding_dimension: 768
       max_length: 8192
+      # benchmark: fp32 full-precision golden the benchmark compares this quant's
+      # embedding against (informational cosine column, not a gate). All quants of
+      # this model share the same fp32 reference for comparable cosine numbers.
+      benchmark:
+        reference_primary: onnx/model.onnx
+        reference_companions:
+          - onnx/model.onnx_data
     model:
       repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
       revision: main
@@ -61,6 +68,10 @@ targets:
       raw_embedding_dimension: 768
       output_embedding_dimension: 768
       max_length: 8192
+      benchmark:
+        reference_primary: onnx/model.onnx
+        reference_companions:
+          - onnx/model.onnx_data
     model:
       repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
       revision: main
@@ -84,10 +95,48 @@ targets:
       raw_embedding_dimension: 768
       output_embedding_dimension: 768
       max_length: 8192
+      benchmark:
+        reference_primary: onnx/model.onnx
+        reference_companions:
+          - onnx/model.onnx_data
     model:
       repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
       revision: main
       primary: onnx/model_q4.onnx
       companions:
         - onnx/model_q4.onnx_data
+        - tokenizer.json
+
+  # Pre-quantized "quantized" variant shipped by the model authors
+  # (onnx/model_quantized.onnx: block-quantized embedding table, fp32 compute).
+  # We ship the authors' export rather than pipeline-produced true int8 because
+  # dynamic int8 quantization of every matmul measured only ~0.55 cosine vs fp32
+  # for this model (activation outliers the per-tensor scheme can't represent),
+  # whereas this export holds ~0.997. The label is NOT int8|q8, so build_target.sh
+  # treats the primary as pre-quantized and skips the int8 step (ships as-is).
+  - id: jinaai/jina-embeddings-v5-text-nano-retrieval
+    quant: quantized
+    bundle_extras:
+      - tokenizer.json
+      - build-info.json
+    metadata:
+      model_format: ort
+      model_type: bert
+      pooling: last_token
+      input_kind: retrieval
+      query_prefix: "Query: "
+      document_prefix: "Document: "
+      raw_embedding_dimension: 768
+      output_embedding_dimension: 768
+      max_length: 8192
+      benchmark:
+        reference_primary: onnx/model.onnx
+        reference_companions:
+          - onnx/model.onnx_data
+    model:
+      repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
+      revision: main
+      primary: onnx/model_quantized.onnx
+      companions:
+        - onnx/model_quantized.onnx_data
         - tokenizer.json

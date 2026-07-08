@@ -1,5 +1,8 @@
 """Regression guards for CI workflow and build script contracts."""
 
+import importlib.util
+import json
+import re
 from pathlib import Path
 
 
@@ -251,3 +254,88 @@ def test_render_report_emits_summary_and_results_json() -> None:
 def test_gen_reference_vectors_supports_inputs_only() -> None:
     text = GEN_VECTORS.read_text(encoding="utf-8")
     assert "--inputs-only" in text
+
+
+def test_bench_c_reports_cosine_similarity() -> None:
+    """The benchmark scores each output against the fp32 golden by cosine."""
+    text = BENCH_C.read_text(encoding="utf-8")
+    assert "cosine" in text
+    assert "mean_cosine" in text
+    assert "min_cosine" in text
+
+
+def test_run_benchmark_builds_fp32_golden_reference() -> None:
+    """When a benchmark reference is configured, run_benchmark fetches the fp32
+    golden and generates real reference vectors (not inputs-only)."""
+    text = RUN_BENCH.read_text(encoding="utf-8")
+    assert "reference_primary" in text
+    assert "hf" in text and "download" in text
+
+
+def test_render_report_has_cosine_column() -> None:
+    text = RENDER_REPORT.read_text(encoding="utf-8")
+    assert "mean_cosine" in text
+
+
+def test_benchmark_cosine_is_opt_outable() -> None:
+    """The ~849 MB fp32-golden download must be skippable via a workflow input."""
+    wf = BENCH_WORKFLOW.read_text(encoding="utf-8")
+    assert "compute_cosine" in wf
+    assert "COMPUTE_COSINE" in wf
+    assert "COMPUTE_COSINE" in RUN_BENCH.read_text(encoding="utf-8")
+
+
+def test_manifest_ships_quantized_target() -> None:
+    """A pre-quantized 'quantized' variant is shipped for the jina nano model.
+
+    True pipeline int8 measured ~0.55 cosine vs fp32 for this model, so we ship the
+    authors' high-fidelity onnx/model_quantized.onnx export as-is instead. The label
+    must NOT be int8|q8, or build_target.sh would re-quantize the already-quantized
+    graph."""
+    text = RELEASE_MANIFEST.read_text(encoding="utf-8")
+    assert "quant: quantized" in text
+    assert "primary: onnx/model_quantized.onnx" in text
+    assert "quant: int8" not in text
+
+
+def test_operator_config_derived_from_ort_artifact() -> None:
+    """The reduced operator config must come from the converted .ort, not the
+    pre-conversion .onnx — otherwise converter fusions (e.g. int8's
+    MatMulIntegerToFloat) are omitted and the minimal build lacks their kernels."""
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    m = re.search(
+        r'create_reduced_build_config\.py"(.*?)"\$\{OPERATOR_CONFIG\}"', text, re.S
+    )
+    assert m, "operator-config generation invocation not found"
+    invocation = m.group(1)
+    assert "--format ORT" in invocation
+    assert "ORT_MODEL_DIR" in invocation
+    assert "OPTIMIZED_ONNX" not in invocation
+
+
+def _load_run_benchmark():
+    spec = importlib.util.spec_from_file_location("run_benchmark", RUN_BENCH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_reference_spec_extracts_benchmark_config() -> None:
+    module = _load_run_benchmark()
+    meta = json.dumps({
+        "benchmark": {
+            "reference_primary": "onnx/model.onnx",
+            "reference_companions": ["onnx/model.onnx_data"],
+        }
+    })
+    primary, companions = module.reference_spec(meta)
+    assert primary == "onnx/model.onnx"
+    assert companions == ["onnx/model.onnx_data"]
+
+
+def test_reference_spec_absent_falls_back_to_none() -> None:
+    module = _load_run_benchmark()
+    # No benchmark block, empty, and malformed JSON all yield "no reference".
+    assert module.reference_spec(json.dumps({"model_type": "bert"})) == (None, [])
+    assert module.reference_spec("{}") == (None, [])
+    assert module.reference_spec("not json") == (None, [])

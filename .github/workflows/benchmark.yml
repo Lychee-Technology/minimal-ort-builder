@@ -30,6 +30,10 @@ on:
         description: "Token truncation length"
         type: string
         default: "128"
+      compute_cosine:
+        description: "Score each quant against the fp32 golden (downloads ~849 MB/job). Off = latency/size only."
+        type: boolean
+        default: true
 
 jobs:
   plan:
@@ -109,6 +113,7 @@ jobs:
           ITERS: ${{ inputs.iters }}
           NUM_SAMPLES: ${{ inputs.num_samples }}
           MAX_TOKENS: ${{ inputs.max_tokens }}
+          COMPUTE_COSINE: ${{ inputs.compute_cosine }}
         run: |
           mkdir -p output release
           docker run --rm \
@@ -136,6 +141,7 @@ jobs:
             -e ITERS \
             -e NUM_SAMPLES \
             -e MAX_TOKENS \
+            -e COMPUTE_COSINE \
             -e FIXTURE_DIR=/fixtures \
             -e OUTPUT_DIR=/output \
             -e RELEASE_DIR=/release \
