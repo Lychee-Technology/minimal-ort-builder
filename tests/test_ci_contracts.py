@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 
@@ -288,6 +289,21 @@ def test_manifest_ships_int8_target() -> None:
     """int8 is a first-class build target (pipeline-produced from fp32)."""
     text = RELEASE_MANIFEST.read_text(encoding="utf-8")
     assert "quant: int8" in text
+
+
+def test_operator_config_derived_from_ort_artifact() -> None:
+    """The reduced operator config must come from the converted .ort, not the
+    pre-conversion .onnx — otherwise converter fusions (e.g. int8's
+    MatMulIntegerToFloat) are omitted and the minimal build lacks their kernels."""
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    m = re.search(
+        r'create_reduced_build_config\.py"(.*?)"\$\{OPERATOR_CONFIG\}"', text, re.S
+    )
+    assert m, "operator-config generation invocation not found"
+    invocation = m.group(1)
+    assert "--format ORT" in invocation
+    assert "ORT_MODEL_DIR" in invocation
+    assert "OPTIMIZED_ONNX" not in invocation
 
 
 def _load_run_benchmark():

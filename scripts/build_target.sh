@@ -191,16 +191,24 @@ ORT_MODEL_PATH="${EXPECTED_ORT_MODEL}"
 echo "    ORT model: ${ORT_MODEL_PATH}"
 
 # ---------------------------------------------------------------------------
-# 9. Generate reduced operator config (from the optimized ONNX model)
+# 9. Generate reduced operator config (from the CONVERTED .ort, not the .onnx)
 #
-# create_reduced_build_config.py expects .onnx (protobuf) format.  The
-# ORT_ENABLE_ALL-optimized ONNX generated above is the source of truth for the
-# reduced operator config that backs the converted .ort artifact.
+# The config must list exactly the ops the minimal build will register at
+# runtime. convert_onnx_models_to_ort.py (--optimization_style Fixed, ENABLE_ALL)
+# can FUSE nodes into ops that are absent from the pre-conversion .onnx — most
+# notably, dynamic int8 quantization emits MatMulInteger + Mul, which the
+# converter fuses into the MatMulIntegerToFloat contrib op. Deriving the config
+# from the .onnx therefore omits that fused op, and the minimal build then fails
+# at CreateSession with "Could not find an implementation for MatMulIntegerToFloat".
+# Reading the .ort (via --format ORT) makes the config match the shipped graph
+# exactly. For pre-quantized targets the .ort op set is identical to what already
+# shipped, so this is a no-op for them.
 # ---------------------------------------------------------------------------
 echo "==> Generating reduced operator config"
 OPERATOR_CONFIG="${WORK_DIR}/operators.config"
 python3 "${ORT_SRC}/tools/python/create_reduced_build_config.py" \
-    "${OPTIMIZED_ONNX}" \
+    --format ORT \
+    "${ORT_MODEL_DIR}" \
     "${OPERATOR_CONFIG}"
 
 # ---------------------------------------------------------------------------
