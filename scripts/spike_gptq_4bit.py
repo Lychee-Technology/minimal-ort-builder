@@ -92,27 +92,50 @@ def cosine(a, b):
     return float(np.dot(a, b) / denom) if denom else 0.0
 
 
+def load_nbits_api():
+    """Import the MatMulNBits quantizer module across onnxruntime versions.
+
+    Renamed matmul_4bits_quantizer → matmul_nbits_quantizer around ORT 1.20. Prints
+    the module's public symbols so config/class-name drift is diagnosable in one run.
+    """
+    import importlib
+
+    last_err = None
+    for name in (
+        "onnxruntime.quantization.matmul_nbits_quantizer",
+        "onnxruntime.quantization.matmul_4bits_quantizer",
+    ):
+        try:
+            mod = importlib.import_module(name)
+            print(f"    using {name}; symbols: "
+                  f"{[s for s in dir(mod) if 'Config' in s or 'Quantizer' in s]}")
+            return mod
+        except ModuleNotFoundError as e:
+            last_err = e
+    raise ImportError(
+        "no MatMulNBits quantizer module found in onnxruntime.quantization"
+    ) from last_err
+
+
 def quantize(algo, model_path, out_path, block_size, reader_factory):
     """Produce a 4-bit MatMulNBits variant. Returns the output path.
 
-    Verify these signatures against the installed onnxruntime 1.27.0 if they raise.
+    Verify these signatures against the installed onnxruntime if they raise; the
+    symbol list printed by load_nbits_api() shows the exact config class names.
     """
     import onnx
-    from onnxruntime.quantization.matmul_4bits_quantizer import (
-        GPTQWeightOnlyQuantConfig,
-        HQQWeightOnlyQuantConfig,
-        MatMulNBitsQuantizer,
-        RTNWeightOnlyQuantConfig,
-    )
+
+    mod = load_nbits_api()
+    MatMulNBitsQuantizer = mod.MatMulNBitsQuantizer
 
     if algo == "gptq":
-        algo_config = GPTQWeightOnlyQuantConfig(
+        algo_config = mod.GPTQWeightOnlyQuantConfig(
             calibration_data_reader=reader_factory(), block_size=block_size
         )
     elif algo == "hqq":
-        algo_config = HQQWeightOnlyQuantConfig(block_size=block_size)
+        algo_config = mod.HQQWeightOnlyQuantConfig(block_size=block_size)
     elif algo == "rtn":
-        algo_config = RTNWeightOnlyQuantConfig(block_size=block_size)
+        algo_config = mod.RTNWeightOnlyQuantConfig(block_size=block_size)
     else:
         raise ValueError(f"unknown algo {algo!r}")
 

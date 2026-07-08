@@ -240,16 +240,30 @@ def _step4_gptq_4bit(
     unquantized), switch use_external_data_format to True and copy the sidecar into the
     ORT converter's input dir in build_target.sh.
     """
+    import importlib
     import logging
 
     import onnx
-    from onnxruntime.quantization.matmul_4bits_quantizer import (
-        GPTQWeightOnlyQuantConfig,
-        MatMulNBitsQuantizer,
-    )
     from tokenizers import Tokenizer
 
     from gen_reference_vectors import KNOWN_INPUTS
+
+    # matmul_4bits_quantizer was renamed to matmul_nbits_quantizer around ORT 1.20;
+    # import whichever the installed onnxruntime provides.
+    nbits = None
+    for name in (
+        "onnxruntime.quantization.matmul_nbits_quantizer",
+        "onnxruntime.quantization.matmul_4bits_quantizer",
+    ):
+        try:
+            nbits = importlib.import_module(name)
+            break
+        except ModuleNotFoundError:
+            continue
+    if nbits is None:
+        raise ImportError(
+            "no MatMulNBits quantizer module in onnxruntime.quantization"
+        )
 
     model = onnx.load(str(input_path))
     input_names = [i.name for i in model.graph.input if i.name in KNOWN_INPUTS]
@@ -257,10 +271,10 @@ def _step4_gptq_4bit(
     reader = _FixtureCalibrationReader(
         tokenizer, fixture_path, input_names, num_samples, max_tokens
     )
-    algo_config = GPTQWeightOnlyQuantConfig(
+    algo_config = nbits.GPTQWeightOnlyQuantConfig(
         calibration_data_reader=reader, block_size=block_size
     )
-    quantizer = MatMulNBitsQuantizer(
+    quantizer = nbits.MatMulNBitsQuantizer(
         model,
         block_size=block_size,
         is_symmetric=True,
