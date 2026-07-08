@@ -58,11 +58,14 @@ pair must be unique, so the same model `id` may appear more than once with
 different `quant` values (e.g. to compare quantisation schemes) — each produces
 its own tarball named `<id_safe>_<quant>_linux-arm64.tar.gz`.
 
-`quant: int8` is the one scheme the pipeline **produces itself**: point its
+Most labels (`fp16`, `q4`, `q4f16`, `quantized`, …) name a **pre-quantized** ONNX
+that already exists in the source repo; the build ships that graph as-is. The one
+label the pipeline can **produce itself** is `int8` (also `q8`): point its
 `primary` at the unquantized fp32 ONNX and the build runs dynamic int8
-quantization (`quantize_dynamic`, `QuantType.QInt8`). Every other label
-(`fp16`, `q4`, `q4f16`, …) must already be quantized in the source repo and is
-shipped as-is.
+quantization (`quantize_dynamic`, `QuantType.QInt8`). Use it only when the model
+tolerates full dynamic int8 — for models with large activation outliers (e.g.
+jina-embeddings-v5) it can collapse embedding fidelity, so prefer the authors'
+own quantized export (shipped here as `quant: quantized`) instead.
 
 ### Benchmark cosine similarity
 

@@ -285,10 +285,17 @@ def test_benchmark_cosine_is_opt_outable() -> None:
     assert "COMPUTE_COSINE" in RUN_BENCH.read_text(encoding="utf-8")
 
 
-def test_manifest_ships_int8_target() -> None:
-    """int8 is a first-class build target (pipeline-produced from fp32)."""
+def test_manifest_ships_quantized_target() -> None:
+    """A pre-quantized 'quantized' variant is shipped for the jina nano model.
+
+    True pipeline int8 measured ~0.55 cosine vs fp32 for this model, so we ship the
+    authors' high-fidelity onnx/model_quantized.onnx export as-is instead. The label
+    must NOT be int8|q8, or build_target.sh would re-quantize the already-quantized
+    graph."""
     text = RELEASE_MANIFEST.read_text(encoding="utf-8")
-    assert "quant: int8" in text
+    assert "quant: quantized" in text
+    assert "primary: onnx/model_quantized.onnx" in text
+    assert "quant: int8" not in text
 
 
 def test_operator_config_derived_from_ort_artifact() -> None:
