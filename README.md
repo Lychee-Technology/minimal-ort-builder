@@ -70,10 +70,13 @@ The `Benchmark` workflow (`.github/workflows/benchmark.yml`) compares targets
 side by side on latency, throughput, memory, and size. When a target sets an
 optional `metadata.benchmark.reference_primary` (the fp32 full-precision ONNX)
 plus `reference_companions`, the benchmark also reports `mean_cosine` /
-`min_cosine`: how close that quant's embedding stays to the full-precision model
-on the fixture inputs. It is an **informational** column — a low score (expected
-for aggressive schemes like `q4`) never fails the run. Targets without the block
-show blank cosine cells.
+`min_cosine`: how close that quant's raw output tensor (`output[0]`, flattened
+over `seq_len × dim` — not the pooled last-token embedding) stays to the
+full-precision model on the fixture inputs. It is an **informational** column — a
+low score (expected for aggressive schemes like `q4`) never fails the run.
+Cosine is computed only when `compute_cosine` is left enabled on the workflow
+dispatch (default on; turn it off for a lighter latency/size-only run). Targets
+without the block, or runs with cosine disabled, show blank cosine cells.
 
 ---
 

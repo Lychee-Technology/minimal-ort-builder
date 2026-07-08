@@ -122,6 +122,11 @@ def main():
     model_metadata = _env("MODEL_METADATA", "{}")
     hf_repo_id = _env("HF_REPO_ID", "")
     hf_revision = _env("HF_REVISION", "main")
+    # Opt-out toggle: when false, skip the ~849 MB fp32 golden download/inference
+    # and emit latency/size only (no cosine), even if the manifest configures one.
+    compute_cosine = _env("COMPUTE_COSINE", "true").strip().lower() not in (
+        "false", "0", "no", "off", ""
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     tarball_name = f"{id_safe}_{quant}_linux-arm64.tar.gz"
@@ -165,6 +170,8 @@ def main():
     # model so bench.c can report cosine similarity of the shipped artifact vs
     # full precision. Otherwise emit inputs-only feeds (bench.c times Run() only).
     ref_primary, ref_companions = reference_spec(model_metadata)
+    if not compute_cosine:
+        ref_primary = None  # opt-out: fall back to inputs-only, no golden download
     tvbin = work / "bench.tvbin"
     vectors_cmd = [
         sys.executable, str(SCRIPTS_DIR / "gen_reference_vectors.py"),

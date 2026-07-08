@@ -276,6 +276,14 @@ def test_render_report_has_cosine_column() -> None:
     assert "mean_cosine" in text
 
 
+def test_benchmark_cosine_is_opt_outable() -> None:
+    """The ~849 MB fp32-golden download must be skippable via a workflow input."""
+    wf = BENCH_WORKFLOW.read_text(encoding="utf-8")
+    assert "compute_cosine" in wf
+    assert "COMPUTE_COSINE" in wf
+    assert "COMPUTE_COSINE" in RUN_BENCH.read_text(encoding="utf-8")
+
+
 def test_manifest_ships_int8_target() -> None:
     """int8 is a first-class build target (pipeline-produced from fp32)."""
     text = RELEASE_MANIFEST.read_text(encoding="utf-8")
