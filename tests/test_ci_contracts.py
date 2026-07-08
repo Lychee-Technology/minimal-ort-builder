@@ -332,21 +332,15 @@ def test_build_script_wires_gptq4_calibration() -> None:
     assert "QUANT_SCHEME=int8" in text
 
 
-def test_manifest_ships_gptq4_target() -> None:
-    """A pipeline-produced calibrated 4-bit target (issue #27) quantizes the FP32
-    primary in-build. The label must NOT be int8|q8, and it must carry a
-    correctness.cosine_threshold since 4-bit will not clear the default 0.99 gate."""
+def test_manifest_ships_no_gptq4_target() -> None:
+    """The gptq4 pipeline capability exists, but no q4gptq target ships for the jina
+    nano model: a spike measured GPTQ 4-bit at only ~0.81 mean cosine (barely above
+    RTN) and ~469 MB (embedding stays fp32), dominated by the 8-bit `quantized` target.
+    See issue #27. If a future model tolerates 4-bit, add a `quant: q4gptq` target."""
     import yaml
 
     manifest = yaml.safe_load(RELEASE_MANIFEST.read_text(encoding="utf-8"))
-    targets = [t for t in manifest["targets"] if t["quant"] == "q4gptq"]
-    assert len(targets) == 1, "expected exactly one q4gptq target"
-    target = targets[0]
-    # We quantize jina's FP32 golden, not a pre-quantized export.
-    assert target["model"]["primary"] == "onnx/model.onnx"
-    assert "onnx/model.onnx_data" in target["model"]["companions"]
-    threshold = target["metadata"]["correctness"]["cosine_threshold"]
-    assert 0 < threshold <= 1
+    assert not [t for t in manifest["targets"] if t["quant"] == "q4gptq"]
 
 
 def _load_run_benchmark():

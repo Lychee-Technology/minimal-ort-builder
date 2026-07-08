@@ -59,13 +59,25 @@ different `quant` values (e.g. to compare quantisation schemes) — each produce
 its own tarball named `<id_safe>_<quant>_linux-arm64.tar.gz`.
 
 Most labels (`fp16`, `q4`, `q4f16`, `quantized`, …) name a **pre-quantized** ONNX
-that already exists in the source repo; the build ships that graph as-is. The one
-label the pipeline can **produce itself** is `int8` (also `q8`): point its
-`primary` at the unquantized fp32 ONNX and the build runs dynamic int8
-quantization (`quantize_dynamic`, `QuantType.QInt8`). Use it only when the model
-tolerates full dynamic int8 — for models with large activation outliers (e.g.
-jina-embeddings-v5) it can collapse embedding fidelity, so prefer the authors'
-own quantized export (shipped here as `quant: quantized`) instead.
+that already exists in the source repo; the build ships that graph as-is. Two
+labels the pipeline can **produce itself** from an unquantized fp32 `primary`:
+
+- **`int8`** (also `q8`) — dynamic int8 (`quantize_dynamic`, `QuantType.QInt8`).
+  Use only when the model tolerates full dynamic int8; for models with large
+  activation outliers (e.g. jina-embeddings-v5) it can collapse embedding fidelity.
+- **`q4gptq`** — calibrated 4-bit weight-only quantization (GPTQ via
+  `MatMulNBitsQuantizer`), calibrated on the correctness fixture
+  (`--quant-scheme gptq4`). Fits per-group weight scales to recover 4-bit fidelity
+  on models that tolerate it.
+
+For **jina-embeddings-v5-text-nano-retrieval specifically, neither is shipped** —
+prefer the authors' own `quant: quantized` export (8-bit weights, ~0.99 cosine vs
+fp32, ~247 MB). A measurement spike (`scripts/spike_gptq_4bit.py`) found dynamic
+int8 collapses to ~0.55, and 4-bit — even GPTQ-calibrated — reaches only ~0.81
+mean / ~0.68 min pooled cosine (barely above uncalibrated RTN's ~0.79/0.63) while
+weighing ~469 MB (`MatMulNBits` leaves the embedding table fp32), so 4-bit is
+dominated on both fidelity and size for this nano model. See issue #27. The
+`int8`/`q4gptq` capabilities remain for other models.
 
 ### Benchmark cosine similarity
 

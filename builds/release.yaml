@@ -141,43 +141,11 @@ targets:
         - onnx/model_quantized.onnx_data
         - tokenizer.json
 
-  # Pipeline-produced calibrated 4-bit weight quantization (issue #27). Unlike the
-  # q4/q4f16 above (jina's uncalibrated RTN 4-bit, ~0.62 cosine vs fp32), this target
-  # ships the FP32 primary (onnx/model.onnx) and the build quantizes it in-pipeline
-  # with GPTQ (optimize_model.py step 4, --quant-scheme gptq4), fitting per-group
-  # weight scales to a calibration set to recover most of the 4-bit gap. The label is
-  # q4gptq (NOT int8|q8), which build_target.sh maps to QUANT_SCHEME=gptq4. Kept
-  # alongside q4/q4f16 so the benchmark cosine column proves the RTN-vs-GPTQ win
-  # side by side before considering promotion.
-  - id: jinaai/jina-embeddings-v5-text-nano-retrieval
-    quant: q4gptq
-    bundle_extras:
-      - tokenizer.json
-      - build-info.json
-    metadata:
-      model_format: ort
-      model_type: bert
-      pooling: last_token
-      input_kind: retrieval
-      query_prefix: "Query: "
-      document_prefix: "Document: "
-      raw_embedding_dimension: 768
-      output_embedding_dimension: 768
-      max_length: 8192
-      correctness:
-        # PLACEHOLDER — set from scripts/spike_gptq_4bit.py before shipping. GPTQ 4-bit
-        # is expected to clear the default 0.99 gate; pin ~0.05 below the measured min
-        # pooled cosine. If the spike shows GPTQ ≈ RTN (~0.62), drop this target instead.
-        cosine_threshold: 0.90
-      benchmark:
-        reference_primary: onnx/model.onnx
-        reference_companions:
-          - onnx/model.onnx_data
-    model:
-      repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
-      revision: main
-      # fp32 full-precision primary — the build quantizes THIS to 4-bit via GPTQ.
-      primary: onnx/model.onnx
-      companions:
-        - onnx/model.onnx_data
-        - tokenizer.json
+  # NOTE: no q4gptq target for this model on purpose. The pipeline CAN produce
+  # calibrated 4-bit (build_target.sh quant: q4gptq → optimize_model.py
+  # --quant-scheme gptq4), but a spike on this nano model measured GPTQ 4-bit at only
+  # ~0.81 mean / 0.68 min pooled cosine vs fp32 (barely above uncalibrated RTN's
+  # ~0.79/0.63), while MatMulNBits leaves the embedding table fp32 so the artifact is
+  # ~469 MB — larger than q4f16 AND far below the 8-bit `quantized` above (~0.99,
+  # ~247 MB). So 4-bit is dominated here; ship `quantized` for fidelity. The gptq4
+  # capability remains for future models that tolerate 4-bit. See issue #27.
