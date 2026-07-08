@@ -195,8 +195,16 @@ def main(argv=None):
     parser.add_argument("--algos", default="rtn,gptq,hqq", help="comma list of rtn,gptq,hqq")
     args = parser.parse_args(argv)
 
+    import logging
+
     import onnxruntime as ort
     from tokenizers import Tokenizer
+
+    # The per-MatMul quantizer INFO logs are ~250 lines/algo; keep only warnings so
+    # the final cosine table is readable.
+    logging.getLogger("onnxruntime.quantization.matmul_nbits_quantizer").setLevel(
+        logging.WARNING
+    )
 
     args.work_dir.mkdir(parents=True, exist_ok=True)
     dl = args.work_dir / "model"
