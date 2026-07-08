@@ -267,6 +267,186 @@ def test_main_skips_step4_when_skip_int8_quantize_is_requested(monkeypatch, tmp_
     assert call_names == ["step0", "step1", "step2b", "step3"]
 
 
+def test_help_mentions_gptq4_calibration_flags():
+    """The CLI should expose the calibrated 4-bit scheme and its calibration inputs."""
+    result = _run("--help")
+    assert result.returncode == 0
+    assert "--quant-scheme" in result.stdout
+    assert "gptq4" in result.stdout
+    assert "--calibration-tokenizer" in result.stdout
+    assert "--calibration-fixture" in result.stdout
+
+
+def _base_argv(input_path, output_path, tmp_path):
+    return [
+        str(SCRIPT),
+        "--input", str(input_path),
+        "--output", str(output_path),
+        "--model_type", "bert",
+        "--target_platform", "arm",
+        "--work_dir", str(tmp_path / "work"),
+    ]
+
+
+def _wire_pipeline(monkeypatch, module, calls):
+    """Monkeypatch steps 0/1/2b/3 and both step-4 variants to record call names."""
+    monkeypatch.setattr(module, "_step0_inline_external_data",
+                        lambda inp, out: calls.append("step0"))
+    monkeypatch.setattr(module, "_step1_transformer_opt",
+                        lambda inp, out, mt: calls.append("step1"))
+    monkeypatch.setattr(module, "_step2b_shape_inference",
+                        lambda inp, out: calls.append("step2b"))
+    monkeypatch.setattr(
+        module, "_step3_ort_graph_opt",
+        lambda inp, out: (calls.append("step3"), Path(out).write_bytes(b"ort"))[-1],
+    )
+    monkeypatch.setattr(module, "_step4_int8_quantize",
+                        lambda inp, out: calls.append("int8"))
+
+
+def test_quant_scheme_gptq4_dispatches_gptq_step(monkeypatch, tmp_path):
+    """--quant-scheme gptq4 runs the GPTQ step (not int8) with calibration paths threaded."""
+    module = _load_module()
+    calls = []
+    _wire_pipeline(monkeypatch, module, calls)
+
+    recorded = {}
+
+    def fake_gptq(inp, out, tok, fixture, num, max_tokens, block_size=32):
+        calls.append("gptq4")
+        recorded.update(tok=tok, fixture=fixture, num=num, max_tokens=max_tokens)
+
+    monkeypatch.setattr(module, "_step4_gptq_4bit", fake_gptq)
+
+    input_path = tmp_path / "model.onnx"
+    input_path.write_bytes(b"onnx")
+    tok = tmp_path / "tokenizer.json"
+    tok.write_text("{}")
+    fixture = tmp_path / "cal.jsonl"
+    fixture.write_text('{"text": "hi"}\n')
+
+    old_argv = sys.argv
+    sys.argv = _base_argv(input_path, tmp_path / "out.onnx", tmp_path) + [
+        "--quant-scheme", "gptq4",
+        "--calibration-tokenizer", str(tok),
+        "--calibration-fixture", str(fixture),
+        "--calibration-num-samples", "2",
+        "--calibration-max-tokens", "64",
+    ]
+    try:
+        module.main()
+    finally:
+        sys.argv = old_argv
+
+    assert calls == ["step0", "step1", "step2b", "step3", "gptq4"]
+    assert "int8" not in calls
+    assert recorded["tok"] == tok
+    assert recorded["fixture"] == fixture
+    assert recorded["num"] == 2
+    assert recorded["max_tokens"] == 64
+
+
+def test_quant_scheme_defaults_to_int8(monkeypatch, tmp_path):
+    """Omitting --quant-scheme keeps the existing dynamic int8 behavior."""
+    module = _load_module()
+    calls = []
+    _wire_pipeline(monkeypatch, module, calls)
+    monkeypatch.setattr(module, "_step4_gptq_4bit",
+                        lambda *a, **k: calls.append("gptq4"))
+
+    input_path = tmp_path / "model.onnx"
+    input_path.write_bytes(b"onnx")
+
+    old_argv = sys.argv
+    sys.argv = _base_argv(input_path, tmp_path / "out.onnx", tmp_path)
+    try:
+        module.main()
+    finally:
+        sys.argv = old_argv
+
+    assert calls == ["step0", "step1", "step2b", "step3", "int8"]
+
+
+def test_skip_int8_quantize_wins_over_gptq4(monkeypatch, tmp_path):
+    """--skip-int8-quantize takes precedence: no step 4 runs even with --quant-scheme gptq4."""
+    module = _load_module()
+    calls = []
+    _wire_pipeline(monkeypatch, module, calls)
+    monkeypatch.setattr(module, "_step4_gptq_4bit",
+                        lambda *a, **k: calls.append("gptq4"))
+
+    input_path = tmp_path / "model.onnx"
+    input_path.write_bytes(b"onnx")
+
+    old_argv = sys.argv
+    sys.argv = _base_argv(input_path, tmp_path / "out.onnx", tmp_path) + [
+        "--quant-scheme", "gptq4",
+        "--skip-int8-quantize",
+    ]
+    try:
+        module.main()
+    finally:
+        sys.argv = old_argv
+
+    assert calls == ["step0", "step1", "step2b", "step3"]
+
+
+def test_gptq4_without_calibration_paths_exits_nonzero(tmp_path):
+    """--quant-scheme gptq4 without existing calibration inputs must fail fast."""
+    input_path = tmp_path / "model.onnx"
+    input_path.write_bytes(b"onnx")
+    result = _run(
+        "--input", str(input_path),
+        "--output", str(tmp_path / "out.onnx"),
+        "--model_type", "bert",
+        "--target_platform", "arm",
+        "--work_dir", str(tmp_path / "work"),
+        "--quant-scheme", "gptq4",
+    )
+    assert result.returncode != 0
+    assert "gptq4" in result.stderr.lower()
+
+
+class _FakeEncoding:
+    def __init__(self, ids):
+        self.ids = ids
+
+
+class _FakeTokenizer:
+    def encode(self, text):
+        # Deterministic ids from text length so truncation is observable.
+        return _FakeEncoding(list(range(1, len(text) + 1)))
+
+
+def test_fixture_calibration_reader_iterates_then_none_and_rewinds(monkeypatch, tmp_path):
+    """The reader yields one feed dict per fixture sample, then None, and rewind() restarts."""
+    module = _load_module()
+    # Running optimize_model.py as a script puts scripts/ on sys.path[0], so the
+    # sibling gen_reference_vectors import resolves; mirror that for the unit test.
+    monkeypatch.syspath_prepend(str(SCRIPT.parent))
+
+    fixture = tmp_path / "cal.jsonl"
+    fixture.write_text('{"text": "abcd"}\n{"text": "ef"}\n{"text": "ghi"}\n')
+
+    reader = module._FixtureCalibrationReader(
+        _FakeTokenizer(),
+        fixture,
+        input_names=["input_ids", "attention_mask"],
+        num_samples=2,
+        max_tokens=3,
+    )
+
+    first = reader.get_next()
+    assert set(first) == {"input_ids", "attention_mask"}
+    assert first["input_ids"].tolist() == [[1, 2, 3]]  # "abcd" → 4 ids, truncated to 3
+    second = reader.get_next()
+    assert second["input_ids"].tolist() == [[1, 2]]  # "ef" → 2 ids
+    assert reader.get_next() is None  # only 2 samples requested
+
+    reader.rewind()
+    assert reader.get_next()["input_ids"].tolist() == [[1, 2, 3]]
+
+
 def test_step1_transformer_opt_disables_attention_fusion(monkeypatch, tmp_path):
     """Transformer optimization must explicitly keep attention fusion disabled."""
     module = _load_module()

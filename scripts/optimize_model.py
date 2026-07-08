@@ -9,7 +9,8 @@ Pipeline steps:
   2a. Static shape specialization  (batch=1, seq_len=max_length — hard fail)
   2b. Symbolic shape inference   (fallback: skip)
   3. ORT graph optimization      (offline ORT_ENABLE_ALL — hard fail)
-  4. Dynamic int8 quantization   (weight_type=QInt8 — hard fail)
+  4. Weight quantization         (--quant-scheme int8: dynamic QInt8; gptq4: calibrated
+                                  4-bit MatMulNBits; or skipped for pre-quantized inputs — hard fail)
 """
 
 import argparse
@@ -188,6 +189,94 @@ def _step4_int8_quantize(input_path: Path, output_path: Path) -> None:
     print("    int8 quantization: OK")
 
 
+class _FixtureCalibrationReader:
+    """CalibrationDataReader over fixture texts, for GPTQ weight quantization.
+
+    Reuses gen_reference_vectors' tokenization/feed helpers (sibling module under
+    /scripts) so calibration feeds match the correctness harness exactly. Duck-typed
+    (get_next/rewind) rather than subclassing onnxruntime.quantization.CalibrationDataReader
+    so it needs no onnxruntime import and stays unit-testable with a fake tokenizer.
+    GPTQ drives it by calling get_next() until it returns None, then rewind() per pass.
+    """
+
+    def __init__(self, tokenizer, fixture_path, input_names, num_samples, max_tokens):
+        from gen_reference_vectors import KNOWN_INPUTS, build_feeds, read_texts, truncate_ids
+
+        known = [n for n in input_names if n in KNOWN_INPUTS]
+        self._feeds = [
+            build_feeds(known, truncate_ids(tokenizer.encode(text).ids, max_tokens))
+            for text in read_texts(str(fixture_path), num_samples)
+        ]
+        self._it = iter(self._feeds)
+
+    def get_next(self):
+        return next(self._it, None)
+
+    def rewind(self):
+        self._it = iter(self._feeds)
+
+
+def _step4_gptq_4bit(
+    input_path: Path,
+    output_path: Path,
+    tokenizer_path: Path,
+    fixture_path: Path,
+    num_samples: int,
+    max_tokens: int,
+    block_size: int = 32,
+) -> None:
+    """Calibrated 4-bit weight-only quantization (GPTQ) → MatMulNBits bits=4. Hard fails.
+
+    Operates on the step-3 fp32 graph (same input point as int8), emitting MatMulNBits
+    with T1=float — the identical op/attrs jina's `q4` ships, which already builds and
+    passes the cosine gate on the neoverse-n1 minimal path, so no new kernel is needed.
+    block_size=32 matches jina's granularity for an apples-to-apples "same coarseness,
+    but calibrated" comparison. accuracy_level is left at the default to stay on that
+    proven kernel.
+
+    NOTE: verify the onnxruntime 1.27.0 signatures via scripts/spike_gptq_4bit.py before
+    relying on this; the matmul_4bits_quantizer API has drifted across releases. If the
+    single-file save exceeds the 2GB protobuf limit (the fp32 embedding table stays
+    unquantized), switch use_external_data_format to True and copy the sidecar into the
+    ORT converter's input dir in build_target.sh.
+    """
+    import logging
+
+    import onnx
+    from onnxruntime.quantization.matmul_4bits_quantizer import (
+        GPTQWeightOnlyQuantConfig,
+        MatMulNBitsQuantizer,
+    )
+    from tokenizers import Tokenizer
+
+    from gen_reference_vectors import KNOWN_INPUTS
+
+    model = onnx.load(str(input_path))
+    input_names = [i.name for i in model.graph.input if i.name in KNOWN_INPUTS]
+    tokenizer = Tokenizer.from_file(str(tokenizer_path))
+    reader = _FixtureCalibrationReader(
+        tokenizer, fixture_path, input_names, num_samples, max_tokens
+    )
+    algo_config = GPTQWeightOnlyQuantConfig(
+        calibration_data_reader=reader, block_size=block_size
+    )
+    quantizer = MatMulNBitsQuantizer(
+        model,
+        block_size=block_size,
+        is_symmetric=True,
+        accuracy_level=None,
+        algo_config=algo_config,
+    )
+    prev_level = logging.root.level
+    logging.root.setLevel(logging.ERROR)
+    try:
+        quantizer.process()
+    finally:
+        logging.root.setLevel(prev_level)
+    quantizer.model.save_model_to_file(str(output_path), use_external_data_format=False)
+    print("    GPTQ 4-bit quantization: OK")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="ONNX optimization + int8 quantization pipeline"
@@ -226,6 +315,36 @@ def main() -> None:
         help="Run steps 0/1/2b/3 and stop before step 4 (for pre-quantized ONNX inputs)",
     )
     parser.add_argument(
+        "--quant-scheme",
+        choices=["int8", "gptq4"],
+        default="int8",
+        help="Step-4 quantization scheme: int8 dynamic (default) or gptq4 "
+        "(calibrated 4-bit weight quantization). Ignored when --skip-int8-quantize is set.",
+    )
+    parser.add_argument(
+        "--calibration-tokenizer",
+        type=Path,
+        help="tokenizer.json for gptq4 calibration (required with --quant-scheme gptq4)",
+    )
+    parser.add_argument(
+        "--calibration-fixture",
+        type=Path,
+        help="JSONL fixture with 'text' records for gptq4 calibration "
+        "(required with --quant-scheme gptq4)",
+    )
+    parser.add_argument(
+        "--calibration-num-samples",
+        type=int,
+        default=3,
+        help="Number of fixture samples to calibrate gptq4 on",
+    )
+    parser.add_argument(
+        "--calibration-max-tokens",
+        type=int,
+        default=128,
+        help="Truncate each gptq4 calibration sample to this many tokens",
+    )
+    parser.add_argument(
         "--reference-output",
         type=Path,
         help="Also write the pre-int8 (step 3) graph here, for correctness comparison",
@@ -235,6 +354,23 @@ def main() -> None:
     if not args.input.exists():
         print(f"ERROR: input not found: {args.input}", file=sys.stderr)
         sys.exit(1)
+
+    if args.quant_scheme == "gptq4" and not args.skip_int8_quantize:
+        missing = [
+            flag
+            for flag, value in (
+                ("--calibration-tokenizer", args.calibration_tokenizer),
+                ("--calibration-fixture", args.calibration_fixture),
+            )
+            if value is None or not value.exists()
+        ]
+        if missing:
+            print(
+                "ERROR: --quant-scheme gptq4 requires existing "
+                f"{' and '.join(missing)}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     if args.max_length is not None and args.max_length <= 0:
         print(
@@ -281,8 +417,18 @@ def main() -> None:
         print(f"    reference graph written: {args.reference_output}")
 
     if args.skip_int8_quantize:
-        print("==> Step 4: dynamic int8 quantization (skipped)")
+        print("==> Step 4: quantization (skipped)")
         shutil.copy2(step3_out, args.output)
+    elif args.quant_scheme == "gptq4":
+        print("==> Step 4: GPTQ 4-bit weight quantization")
+        _step4_gptq_4bit(
+            step3_out,
+            args.output,
+            args.calibration_tokenizer,
+            args.calibration_fixture,
+            args.calibration_num_samples,
+            args.calibration_max_tokens,
+        )
     else:
         print("==> Step 4: dynamic int8 quantization")
         _step4_int8_quantize(step3_out, args.output)

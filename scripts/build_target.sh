@@ -112,9 +112,16 @@ fi
 # one is added, label it with a non-q8 scheme (or revisit this case) so it is
 # treated as pre-quantized.
 # ---------------------------------------------------------------------------
+# QUANT_SCHEME selects which step-4 quantization the pipeline runs on the fp32
+# primary (only meaningful when PREQUANTIZED_PRIMARY=0):
+#   int8  → dynamic QInt8 (issue #23)
+#   gptq4 → calibrated 4-bit MatMulNBits (issue #27); replaces jina's uncalibrated
+#           RTN q4/q4f16 (~0.62 cosine) with a calibration-fitted 4-bit export.
 PREQUANTIZED_PRIMARY=1
+QUANT_SCHEME=""
 case "${QUANT}" in
-    int8|q8) PREQUANTIZED_PRIMARY=0 ;;
+    int8|q8) PREQUANTIZED_PRIMARY=0; QUANT_SCHEME=int8  ;;
+    q4gptq)  PREQUANTIZED_PRIMARY=0; QUANT_SCHEME=gptq4 ;;
 esac
 
 # ---------------------------------------------------------------------------
@@ -143,6 +150,17 @@ OPT_WORK_DIR="${WORK_DIR}/optimize"
 OPTIMIZE_EXTRA_ARGS=()
 if [ "${PREQUANTIZED_PRIMARY}" = "1" ]; then
     OPTIMIZE_EXTRA_ARGS+=(--skip-int8-quantize)
+elif [ "${QUANT_SCHEME}" = "gptq4" ]; then
+    # Calibrated 4-bit weight quantization: feed the model's own tokenizer (a
+    # downloaded companion) and the shared fixture through GPTQ. NUM_SAMPLES /
+    # MAX_TOKENS mirror the correctness gate so calibration and scoring align.
+    OPTIMIZE_EXTRA_ARGS+=(
+        --quant-scheme gptq4
+        --calibration-tokenizer "${MODEL_DIR}/tokenizer.json"
+        --calibration-fixture "${FIXTURE_DIR}/jane-austen_pride-and-prejudice.jsonl"
+        --calibration-num-samples "${NUM_SAMPLES}"
+        --calibration-max-tokens "${MAX_TOKENS}"
+    )
 fi
 python3 "$(dirname "$0")/optimize_model.py" \
     --input "${MODEL_DIR}/${HF_PRIMARY}" \

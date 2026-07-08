@@ -313,6 +313,42 @@ def test_operator_config_derived_from_ort_artifact() -> None:
     assert "OPTIMIZED_ONNX" not in invocation
 
 
+# ---------------------------------------------------------------------------
+# Calibrated 4-bit weight quantization (GPTQ) contracts (issue #27)
+# ---------------------------------------------------------------------------
+
+
+def test_build_script_wires_gptq4_calibration() -> None:
+    """The q4gptq label must trigger the calibrated 4-bit scheme and thread the
+    tokenizer + fixture through optimize_model.py, without regressing the int8 path."""
+    text = BUILD_SCRIPT.read_text(encoding="utf-8")
+    assert "q4gptq)" in text
+    assert "QUANT_SCHEME=gptq4" in text
+    assert "--quant-scheme gptq4" in text
+    assert '--calibration-tokenizer "${MODEL_DIR}/tokenizer.json"' in text
+    assert "--calibration-fixture" in text
+    # int8 pipeline path (issue #23) must remain intact.
+    assert "int8|q8)" in text
+    assert "QUANT_SCHEME=int8" in text
+
+
+def test_manifest_ships_gptq4_target() -> None:
+    """A pipeline-produced calibrated 4-bit target (issue #27) quantizes the FP32
+    primary in-build. The label must NOT be int8|q8, and it must carry a
+    correctness.cosine_threshold since 4-bit will not clear the default 0.99 gate."""
+    import yaml
+
+    manifest = yaml.safe_load(RELEASE_MANIFEST.read_text(encoding="utf-8"))
+    targets = [t for t in manifest["targets"] if t["quant"] == "q4gptq"]
+    assert len(targets) == 1, "expected exactly one q4gptq target"
+    target = targets[0]
+    # We quantize jina's FP32 golden, not a pre-quantized export.
+    assert target["model"]["primary"] == "onnx/model.onnx"
+    assert "onnx/model.onnx_data" in target["model"]["companions"]
+    threshold = target["metadata"]["correctness"]["cosine_threshold"]
+    assert 0 < threshold <= 1
+
+
 def _load_run_benchmark():
     spec = importlib.util.spec_from_file_location("run_benchmark", RUN_BENCH)
     module = importlib.util.module_from_spec(spec)
