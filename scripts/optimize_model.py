@@ -275,13 +275,16 @@ def _step4_gptq_4bit(
     reader = _FixtureCalibrationReader(
         tokenizer, fixture_path, input_names, num_samples, max_tokens
     )
+    # ORT 1.27: bits/block_size are MatMulNBitsQuantizer kwargs; GPTQ carries its own
+    # block_size on the algo config. accuracy_level left at default to stay on the same
+    # MatMulNBits kernel jina's q4 uses (see spike / plan).
     algo_config = nbits.GPTQWeightOnlyQuantConfig(
         calibration_data_reader=reader, block_size=block_size
     )
     quantizer = nbits.MatMulNBitsQuantizer(
         model,
+        bits=4,
         block_size=block_size,
-        is_symmetric=True,
         accuracy_level=None,
         algo_config=algo_config,
     )

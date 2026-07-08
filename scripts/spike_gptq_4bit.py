@@ -130,26 +130,24 @@ def quantize(algo, model_path, out_path, block_size, reader_factory):
     import onnx
 
     mod = load_nbits_api()
-    MatMulNBitsQuantizer = mod.MatMulNBitsQuantizer
 
+    # ORT 1.27 placement: bits/block_size/is_symmetric are MatMulNBitsQuantizer kwargs.
+    # GPTQ/HQQ configs carry their own block_size; RTN has none, so algo_config=None
+    # makes the quantizer build a DefaultWeightOnlyQuantConfig (plain RTN weight-only).
     if algo == "gptq":
         algo_config = mod.GPTQWeightOnlyQuantConfig(
             calibration_data_reader=reader_factory(), block_size=block_size
         )
     elif algo == "hqq":
-        algo_config = mod.HQQWeightOnlyQuantConfig(block_size=block_size)
+        algo_config = mod.HQQWeightOnlyQuantConfig(block_size=block_size, bits=4)
     elif algo == "rtn":
-        algo_config = mod.RTNWeightOnlyQuantConfig(block_size=block_size)
+        algo_config = None
     else:
         raise ValueError(f"unknown algo {algo!r}")
 
     model = onnx.load(str(model_path))
-    quant = MatMulNBitsQuantizer(
-        model,
-        block_size=block_size,
-        is_symmetric=True,
-        accuracy_level=None,
-        algo_config=algo_config,
+    quant = mod.MatMulNBitsQuantizer(
+        model, bits=4, block_size=block_size, algo_config=algo_config
     )
     quant.process()
     # Keep single-file if it fits; the pipeline's converter dir-scan prefers that.
