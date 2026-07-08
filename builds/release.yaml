@@ -15,44 +15,20 @@ build:
   minimal_build: extended
 
 targets:
-  - id: jinaai/jina-embeddings-v5-text-nano-retrieval
-    # quant: output scheme; also selects the tarball filename. build_target.sh
-    # runs pipeline int8 quantization ONLY for int8|q8; every other label
-    # (q4f16 here) is treated as pre-quantized from HF and skips that step.
-    quant: q4f16
-    bundle_extras:
-      - tokenizer.json
-      - build-info.json
-    metadata:
-      model_format: ort
-      model_type: bert
-      pooling: last_token
-      input_kind: retrieval
-      query_prefix: "Query: "
-      document_prefix: "Document: "
-      raw_embedding_dimension: 768
-      output_embedding_dimension: 768
-      max_length: 8192
-      # benchmark: fp32 full-precision golden the benchmark compares this quant's
-      # embedding against (informational cosine column, not a gate). All quants of
-      # this model share the same fp32 reference for comparable cosine numbers.
-      benchmark:
-        reference_primary: onnx/model.onnx
-        reference_companions:
-          - onnx/model.onnx_data
-    model:
-      repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
-      revision: main
-      primary: onnx/model_q4f16.onnx
-      companions:
-        - onnx/model_q4f16.onnx_data
-        - tokenizer.json
-
-  # Additional quants of the same model. The manifest keys uniqueness on
-  # (id, quant), so these share the id above and differ only in quant/primary.
-  # All are pre-quantized from HF (non-int8/q8 labels), so none trigger the
-  # pipeline int8 step. Primarily consumed by the benchmark workflow to compare
-  # quantization schemes side by side.
+  # quant: output scheme; also selects the tarball filename. build_target.sh runs
+  # pipeline int8 quantization ONLY for int8|q8; every other label (fp16, quantized
+  # here) is treated as pre-quantized from HF and shipped as-is. The manifest keys
+  # uniqueness on (id, quant), so the same id may repeat with different quant values.
+  #
+  # NOTE: jina's 4-bit q4/q4f16 exports were removed — they measured only ~0.62
+  # cosine vs fp32 (4-bit on BOTH the compute matmuls and the token embedding table,
+  # which a last-token-pooling nano model can't absorb; q4f16's fp16 compute also
+  # collapses individual samples to ~0.18). Prefer the 8-bit `quantized` export
+  # below (~0.99). See issue #27.
+  #
+  # benchmark: fp32 full-precision golden the benchmark compares each quant's
+  # embedding against (informational cosine column, not a gate). Both quants share
+  # the same fp32 reference for comparable cosine numbers.
   - id: jinaai/jina-embeddings-v5-text-nano-retrieval
     quant: fp16
     bundle_extras:
@@ -78,33 +54,6 @@ targets:
       primary: onnx/model_fp16.onnx
       companions:
         - onnx/model_fp16.onnx_data
-        - tokenizer.json
-
-  - id: jinaai/jina-embeddings-v5-text-nano-retrieval
-    quant: q4
-    bundle_extras:
-      - tokenizer.json
-      - build-info.json
-    metadata:
-      model_format: ort
-      model_type: bert
-      pooling: last_token
-      input_kind: retrieval
-      query_prefix: "Query: "
-      document_prefix: "Document: "
-      raw_embedding_dimension: 768
-      output_embedding_dimension: 768
-      max_length: 8192
-      benchmark:
-        reference_primary: onnx/model.onnx
-        reference_companions:
-          - onnx/model.onnx_data
-    model:
-      repo_id: jinaai/jina-embeddings-v5-text-nano-retrieval
-      revision: main
-      primary: onnx/model_q4.onnx
-      companions:
-        - onnx/model_q4.onnx_data
         - tokenizer.json
 
   # Pre-quantized "quantized" variant shipped by the model authors

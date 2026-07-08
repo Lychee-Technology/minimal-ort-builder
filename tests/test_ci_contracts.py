@@ -128,11 +128,17 @@ def test_smoke_test_still_disables_runtime_graph_optimization() -> None:
     assert "ORT_DISABLE_ALL" in text
 
 
-def test_release_manifest_uses_published_quantized_onnx_for_jina_nano() -> None:
-    """The Jina nano target should consume the published quantized ONNX artifact."""
-    text = RELEASE_MANIFEST.read_text(encoding="utf-8")
-    assert "primary: onnx/model_q4f16.onnx" in text
-    assert "- onnx/model_q4f16.onnx_data" in text
+def test_release_manifest_drops_low_fidelity_4bit_targets() -> None:
+    """The low-fidelity 4-bit q4/q4f16 exports were removed (issue #27): they hold only
+    ~0.62 cosine vs fp32 (4-bit on both the matmuls and the embedding table). The jina
+    nano model ships fp16 (~1.0) and the 8-bit `quantized` (~0.99) instead."""
+    import yaml
+
+    manifest = yaml.safe_load(RELEASE_MANIFEST.read_text(encoding="utf-8"))
+    quants = {t["quant"] for t in manifest["targets"]}
+    assert "q4" not in quants
+    assert "q4f16" not in quants
+    assert {"fp16", "quantized"} <= quants
 
 
 def test_build_script_derives_int8_skip_from_quant() -> None:
